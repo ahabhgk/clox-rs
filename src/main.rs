@@ -39,7 +39,7 @@ fn run_file(path: &str) {
 }
 
 fn main() {
-  match env::args().next() {
+  match env::args().nth(1) {
     Some(path) => run_file(&path),
     None => run_repl(),
   };

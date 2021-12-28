@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum TokenType {
   // Single-character tokens.
   LeftParen,
@@ -41,11 +42,9 @@ pub enum TokenType {
   True,
   Var,
   While,
-  // Special
-  Error,
-  EOF,
 }
 
+#[derive(Debug)]
 pub struct Token {
   token_type: TokenType,
   start: usize,
