@@ -1,5 +1,7 @@
-mod compiler;
+mod chunk;
+mod parser;
 mod scanner;
+mod source;
 mod token;
 mod vm;
 

@@ -145,7 +145,13 @@ impl<'source> Scanner<'source> {
   }
 
   fn make_token(&self, token_type: TokenType) -> Token {
-    Token::new(token_type, self.start, self.index - self.start, self.line)
+    Token::new(
+      token_type,
+      self.start,
+      self.index - self.start,
+      self.line,
+      self.slice(self.start, self.index).to_owned(),
+    )
   }
 
   fn scan_string(&mut self) -> Result<Token, String> {
