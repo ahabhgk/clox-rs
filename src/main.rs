@@ -3,11 +3,11 @@ mod parser;
 mod scanner;
 mod source;
 mod token;
+mod value;
 mod vm;
 
 use std::{
-  env,
-  fs::read_to_string,
+  env, fs,
   io::{self, BufRead, Write},
 };
 
@@ -33,7 +33,7 @@ fn run_repl() {
 }
 
 fn run_file(path: &str) {
-  let source = read_to_string(path).unwrap();
+  let source = fs::read_to_string(path).unwrap();
 
   if let Err(e) = interpret(&source) {
     eprintln!("{}", e);

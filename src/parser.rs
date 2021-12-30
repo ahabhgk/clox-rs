@@ -2,6 +2,7 @@ use crate::{
   chunk::{Chunk, Op},
   scanner::Scanner,
   token::{Precedence, Token, TokenType},
+  value::Value,
 };
 
 pub fn compile(source: &str) -> Result<Chunk, String> {
@@ -83,7 +84,17 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
   pub fn number(&mut self, token: Token) -> Result<(), String> {
     let constant =
       token.source.parse::<f64>().map_err(|e| "TODO".to_owned())?;
-    self.chunk.emit_constant(constant);
+    self.chunk.emit_constant(Value::number(constant));
+    Ok(())
+  }
+
+  pub fn literal(&mut self, token: Token) -> Result<(), String> {
+    match token.token_type {
+      TokenType::Nil => self.chunk.emit_op(Op::Nil),
+      TokenType::False => self.chunk.emit_op(Op::False),
+      TokenType::True => self.chunk.emit_op(Op::True),
+      _ => unreachable!(),
+    }
     Ok(())
   }
 
@@ -91,6 +102,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     self.parse_precedence(Precedence::Unary)?;
 
     match token.token_type {
+      TokenType::Bang => self.chunk.emit_op(Op::Not),
       TokenType::Minus => self.chunk.emit_op(Op::Negate),
       _ => unreachable!(),
     }
@@ -102,6 +114,21 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     self.parse_precedence(precedence.up())?;
 
     match token.token_type {
+      TokenType::BangEqual => {
+        self.chunk.emit_op(Op::Equal);
+        self.chunk.emit_op(Op::Not);
+      }
+      TokenType::EqualEqual => self.chunk.emit_op(Op::Equal),
+      TokenType::Greater => self.chunk.emit_op(Op::Greater),
+      TokenType::GreaterEqual => {
+        self.chunk.emit_op(Op::Less);
+        self.chunk.emit_op(Op::Not);
+      }
+      TokenType::Less => self.chunk.emit_op(Op::Less),
+      TokenType::LessEqual => {
+        self.chunk.emit_op(Op::Greater);
+        self.chunk.emit_op(Op::Not);
+      }
       TokenType::Plus => self.chunk.emit_op(Op::Add),
       TokenType::Minus => self.chunk.emit_op(Op::Subtract),
       TokenType::Star => self.chunk.emit_op(Op::Multiply),

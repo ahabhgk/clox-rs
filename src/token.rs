@@ -125,31 +125,43 @@ impl TokenType {
       Self::Semicolon => Rule::new(Precedence::None, None, None),
       Self::Slash => Rule::new(Precedence::Factor, None, Some(Parser::binary)),
       Self::Star => Rule::new(Precedence::Factor, None, Some(Parser::binary)),
-      Self::Bang => Rule::new(Precedence::None, None, None),
-      Self::BangEqual => Rule::new(Precedence::None, None, None),
+      Self::Bang => Rule::new(Precedence::None, Some(Parser::unary), None),
+      Self::BangEqual => {
+        Rule::new(Precedence::Equality, None, Some(Parser::binary))
+      }
       Self::Equal => Rule::new(Precedence::None, None, None),
-      Self::EqualEqual => Rule::new(Precedence::None, None, None),
-      Self::Greater => Rule::new(Precedence::None, None, None),
-      Self::GreaterEqual => Rule::new(Precedence::None, None, None),
-      Self::Less => Rule::new(Precedence::None, None, None),
-      Self::LessEqual => Rule::new(Precedence::None, None, None),
+      Self::EqualEqual => {
+        Rule::new(Precedence::Equality, None, Some(Parser::binary))
+      }
+      Self::Greater => {
+        Rule::new(Precedence::Comparison, None, Some(Parser::binary))
+      }
+      Self::GreaterEqual => {
+        Rule::new(Precedence::Comparison, None, Some(Parser::binary))
+      }
+      Self::Less => {
+        Rule::new(Precedence::Comparison, None, Some(Parser::binary))
+      }
+      Self::LessEqual => {
+        Rule::new(Precedence::Comparison, None, Some(Parser::binary))
+      }
       Self::Identifier => Rule::new(Precedence::None, None, None),
       Self::String => Rule::new(Precedence::None, None, None),
       Self::Number => Rule::new(Precedence::None, Some(Parser::number), None),
       Self::And => Rule::new(Precedence::None, None, None),
       Self::Class => Rule::new(Precedence::None, None, None),
       Self::Else => Rule::new(Precedence::None, None, None),
-      Self::False => Rule::new(Precedence::None, None, None),
+      Self::False => Rule::new(Precedence::None, Some(Parser::literal), None),
       Self::For => Rule::new(Precedence::None, None, None),
       Self::Fun => Rule::new(Precedence::None, None, None),
       Self::If => Rule::new(Precedence::None, None, None),
-      Self::Nil => Rule::new(Precedence::None, None, None),
+      Self::Nil => Rule::new(Precedence::None, Some(Parser::literal), None),
       Self::Or => Rule::new(Precedence::None, None, None),
       Self::Print => Rule::new(Precedence::None, None, None),
       Self::Return => Rule::new(Precedence::None, None, None),
       Self::Super => Rule::new(Precedence::None, None, None),
       Self::This => Rule::new(Precedence::None, None, None),
-      Self::True => Rule::new(Precedence::None, None, None),
+      Self::True => Rule::new(Precedence::None, Some(Parser::literal), None),
       Self::Var => Rule::new(Precedence::None, None, None),
       Self::While => Rule::new(Precedence::None, None, None),
     }
