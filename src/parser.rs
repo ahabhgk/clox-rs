@@ -34,7 +34,6 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
 
   pub fn end(&mut self) {
     self.chunk.emit_op(Op::Return);
-    self.chunk.print();
   }
 
   pub fn advance(&mut self) -> Result<Option<Token>, String> {

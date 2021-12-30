@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub enum Value {
   Bool(bool),
   Nil,
@@ -60,7 +60,7 @@ impl Value {
   }
 }
 
-impl fmt::Display for Value {
+impl fmt::Debug for Value {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::Number(v) => write!(f, "{}", v),

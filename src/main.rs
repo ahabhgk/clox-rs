@@ -1,17 +1,9 @@
-mod chunk;
-mod parser;
-mod scanner;
-mod source;
-mod token;
-mod value;
-mod vm;
-
 use std::{
   env, fs,
   io::{self, BufRead, Write},
 };
 
-use vm::interpret;
+use clox_rs::interpret;
 
 fn run_repl() {
   let stdin = io::stdin();
@@ -20,7 +12,7 @@ fn run_repl() {
   let mut writer = stdout.lock();
 
   loop {
-    writer.write("> ".as_bytes()).unwrap();
+    writer.write_all("> ".as_bytes()).unwrap();
     writer.flush().unwrap();
 
     let mut line = String::new();

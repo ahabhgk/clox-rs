@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt, iter::Enumerate, slice::Iter};
 
 use crate::value::Value;
 
@@ -81,42 +81,56 @@ impl Chunk {
     index
   }
 
-  pub fn print(&self) {
-    println!("== Bytecodes ==");
+  fn debug_bytecodes(&self, prefix: &str) -> String {
+    let mut buffer = String::from(format!("{}\n", prefix));
 
-    let mut offset = 0;
-    while offset < self.codes.len() {
-      print!("{:04} ", offset);
-      let code = *self.codes.get(offset).unwrap();
+    let mut codes = self.codes.iter().enumerate();
+    let mut constants = self.constants.iter();
+
+    while let Some((index, &code)) = codes.next() {
+      buffer.push_str(&format!("{:04} ", index));
+
       let op = Op::from(code);
-      offset = match op {
-        Op::Constant => self.print_constant(&op, offset),
-        Op::Nil => self.print_simple(&op, offset),
-        Op::True => self.print_simple(&op, offset),
-        Op::False => self.print_simple(&op, offset),
-        Op::Equal => self.print_simple(&op, offset),
-        Op::Greater => self.print_simple(&op, offset),
-        Op::Less => self.print_simple(&op, offset),
-        Op::Add => self.print_simple(&op, offset),
-        Op::Subtract => self.print_simple(&op, offset),
-        Op::Multiply => self.print_simple(&op, offset),
-        Op::Divide => self.print_simple(&op, offset),
-        Op::Not => self.print_simple(&op, offset),
-        Op::Negate => self.print_simple(&op, offset),
-        Op::Return => self.print_simple(&op, offset),
+      let s = match op {
+        Op::Constant => self.debug_constant(&op, &mut codes, &mut constants),
+        Op::Nil => self.debug_simple(&op),
+        Op::True => self.debug_simple(&op),
+        Op::False => self.debug_simple(&op),
+        Op::Equal => self.debug_simple(&op),
+        Op::Greater => self.debug_simple(&op),
+        Op::Less => self.debug_simple(&op),
+        Op::Add => self.debug_simple(&op),
+        Op::Subtract => self.debug_simple(&op),
+        Op::Multiply => self.debug_simple(&op),
+        Op::Divide => self.debug_simple(&op),
+        Op::Not => self.debug_simple(&op),
+        Op::Negate => self.debug_simple(&op),
+        Op::Return => self.debug_simple(&op),
       };
+      buffer.push_str(&s);
     }
+
+    buffer
   }
 
-  fn print_simple(&self, op: &Op, offset: usize) -> usize {
-    println!("{:?}", op);
-    offset + 1
+  fn debug_simple(&self, op: &Op) -> String {
+    format!("{:?}\n", op)
   }
 
-  fn print_constant(&self, op: &Op, offset: usize) -> usize {
-    let index = *self.codes.get(offset + 1).unwrap();
-    let constant = self.constants.get(index).unwrap();
-    println!("{:<16?} {:4} '{}'", op, index, constant);
-    offset + 2
+  fn debug_constant(
+    &self,
+    op: &Op,
+    codes: &mut Enumerate<Iter<usize>>,
+    constants: &mut Iter<Value>,
+  ) -> String {
+    let (_, &constant_index) = codes.next().unwrap();
+    let constant = constants.next().unwrap();
+    format!("{:<16?} {:4} '{:?}'\n", op, constant_index, constant)
+  }
+}
+
+impl fmt::Debug for Chunk {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "{}", self.debug_bytecodes("== Bytecodes =="))
   }
 }

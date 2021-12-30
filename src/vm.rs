@@ -1,9 +1,11 @@
+use std::fmt;
+
 use crate::{chunk::Op, parser::compile, value::Value};
 
 pub fn interpret(source: &str) -> Result<(), String> {
   let chunk = compile(source)?;
   let mut vm = VM::new(chunk.codes.into_iter(), chunk.constants.into_iter());
-  vm.debug_run()?;
+  vm.inspect()?;
   Ok(())
 }
 
@@ -22,7 +24,7 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
     }
   }
 
-  pub fn debug_run(&mut self) -> Result<(), String> {
+  pub fn inspect(&mut self) -> Result<Inspector, String> {
     macro_rules! read_code {
       () => {
         self.codes.next().unwrap()
@@ -50,10 +52,13 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
       };
     }
 
-    println!("== VM Stack ==");
+    let mut inspector = Inspector {
+      stack_snapshot: Vec::new(),
+    };
 
-    let result = loop {
-      println!("{:?}", self.stack);
+    let _result = loop {
+      inspector.stack_snapshot.push(self.stack.clone());
+
       let code = read_code!();
       let op = Op::from(code);
       match op {
@@ -110,7 +115,20 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
         Op::Return => break pop!(),
       }
     };
-    println!("{:?}", result);
+    Ok(inspector)
+  }
+}
+
+pub struct Inspector {
+  stack_snapshot: Vec<Vec<Value>>,
+}
+
+impl fmt::Debug for Inspector {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    writeln!(f, "== VM Stack Snapshot ==")?;
+    for snapshot in &self.stack_snapshot {
+      writeln!(f, "{:?}", snapshot)?;
+    }
     Ok(())
   }
 }

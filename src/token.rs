@@ -61,14 +61,6 @@ pub enum Precedence {
   Primary,
 }
 
-#[test]
-fn tt() {
-  let n = Precedence::None;
-  let f = Precedence::Factor;
-  let p = Precedence::Primary;
-  dbg!(p >= f, f >= n);
-}
-
 impl Precedence {
   pub fn up(self) -> Self {
     match self {
