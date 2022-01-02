@@ -138,7 +138,7 @@ impl TokenType {
         Rule::new(Precedence::Comparison, None, Some(Parser::binary))
       }
       Self::Identifier => Rule::new(Precedence::None, None, None),
-      Self::String => Rule::new(Precedence::None, None, None),
+      Self::String => Rule::new(Precedence::None, Some(Parser::string), None),
       Self::Number => Rule::new(Precedence::None, Some(Parser::number), None),
       Self::And => Rule::new(Precedence::None, None, None),
       Self::Class => Rule::new(Precedence::None, None, None),
@@ -163,9 +163,9 @@ impl TokenType {
 #[derive(Debug)]
 pub struct Token {
   pub token_type: TokenType,
-  start: usize,
-  length: usize,
-  line: usize,
+  pub start: usize,
+  pub length: usize,
+  pub line: usize,
   pub source: String,
 }
 

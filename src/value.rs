@@ -5,6 +5,7 @@ pub enum Value {
   Bool(bool),
   Nil,
   Number(f64),
+  String(String),
 }
 
 impl Value {
@@ -20,6 +21,10 @@ impl Value {
     Self::Number(v)
   }
 
+  pub fn string(v: String) -> Self {
+    Self::String(v)
+  }
+
   pub fn as_bool(&self) -> Option<bool> {
     match self {
       Self::Bool(v) => Some(*v),
@@ -30,6 +35,13 @@ impl Value {
   pub fn as_number(&self) -> Option<f64> {
     match self {
       Self::Number(v) => Some(*v),
+      _ => None,
+    }
+  }
+
+  pub fn as_string(&self) -> Option<&str> {
+    match self {
+      Self::String(v) => Some(v),
       _ => None,
     }
   }
@@ -50,11 +62,16 @@ impl Value {
     self.is_nil() || self.is_bool() && !self.as_bool().unwrap()
   }
 
+  pub fn is_string(&self) -> bool {
+    matches!(self, Self::String(_))
+  }
+
   pub fn equal(a: &Self, b: &Self) -> bool {
     match (a, b) {
       (Self::Number(a), Self::Number(b)) => a == b,
       (Self::Bool(a), Self::Bool(b)) => a == b,
       (Self::Nil, Self::Nil) => true,
+      (Self::String(a), Self::String(b)) => a == b,
       _ => false,
     }
   }
@@ -66,6 +83,7 @@ impl fmt::Debug for Value {
       Self::Number(v) => write!(f, "{}", v),
       Self::Bool(v) => write!(f, "{}", v),
       Self::Nil => write!(f, "nil"),
+      Self::String(v) => write!(f, "\"{}\"", v),
     }
   }
 }

@@ -97,3 +97,26 @@ fn chapter_18() {
 "
   );
 }
+
+#[test]
+fn chapter_19() {
+  assert_snapshot!(
+    r#""aha" + "b""#,
+    r#"
+== Bytecodes ==
+0000 Constant    0 '"aha"'
+0002 Constant    1 '"b"'
+0004 Add
+0005 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[]
+["aha"]
+["aha", "b"]
+["ahab"]
+
+"#
+  );
+}

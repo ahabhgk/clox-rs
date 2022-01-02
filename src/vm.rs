@@ -85,9 +85,22 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
           push!(Value::bool(a < b));
         }
         Op::Add => {
-          let b = pop!().as_number().ok_or("Operand must be a number.")?;
-          let a = pop!().as_number().ok_or("Operand must be a number.")?;
-          push!(Value::number(a + b));
+          let b = pop!();
+          let a = pop!();
+          if b.is_string() && a.is_string() {
+            let b = b.as_string().unwrap();
+            let a = a.as_string().unwrap();
+            let concat = format!("{}{}", a, b);
+            push!(Value::string(concat));
+          } else if b.is_number() && a.is_number() {
+            let b = b.as_number().unwrap();
+            let a = a.as_number().unwrap();
+            push!(Value::number(a + b));
+          } else {
+            return Err(
+              "Operands must be two numbers or two strings.".to_string(),
+            );
+          }
         }
         Op::Subtract => {
           let b = pop!().as_number().ok_or("Operand must be a number.")?;

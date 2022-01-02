@@ -87,6 +87,13 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     Ok(())
   }
 
+  pub fn string(&mut self, token: Token) -> Result<(), String> {
+    let string = &token.source[1..(token.length - 1)];
+    let string = string.to_owned();
+    self.chunk.emit_constant(Value::string(string));
+    Ok(())
+  }
+
   pub fn literal(&mut self, token: Token) -> Result<(), String> {
     match token.token_type {
       TokenType::Nil => self.chunk.emit_op(Op::Nil),
