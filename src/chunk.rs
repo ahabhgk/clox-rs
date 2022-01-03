@@ -1,4 +1,8 @@
-use std::{fmt, iter::Enumerate, slice::Iter};
+use std::{
+  fmt::{self, Debug},
+  iter::Enumerate,
+  slice::Iter,
+};
 
 use crate::value::Value;
 
@@ -8,6 +12,10 @@ pub enum Op {
   Nil,
   True,
   False,
+  Pop,
+  GetGlobal,
+  DefineGlobal,
+  SetGlobal,
   Equal,
   Greater,
   Less,
@@ -17,6 +25,7 @@ pub enum Op {
   Divide,
   Not,
   Negate,
+  Print,
   Return,
 }
 
@@ -33,16 +42,21 @@ impl From<usize> for Op {
       1 => Self::Nil,
       2 => Self::True,
       3 => Self::False,
-      4 => Self::Equal,
-      5 => Self::Greater,
-      6 => Self::Less,
-      7 => Self::Add,
-      8 => Self::Subtract,
-      9 => Self::Multiply,
-      10 => Self::Divide,
-      11 => Self::Not,
-      12 => Self::Negate,
-      13 => Self::Return,
+      4 => Self::Pop,
+      5 => Self::GetGlobal,
+      6 => Self::DefineGlobal,
+      7 => Self::SetGlobal,
+      8 => Self::Equal,
+      9 => Self::Greater,
+      10 => Self::Less,
+      11 => Self::Add,
+      12 => Self::Subtract,
+      13 => Self::Multiply,
+      14 => Self::Divide,
+      15 => Self::Not,
+      16 => Self::Negate,
+      17 => Self::Print,
+      18 => Self::Return,
       _ => unreachable!(),
     }
   }
@@ -71,11 +85,26 @@ impl Chunk {
     self.write(index);
   }
 
+  pub fn emit_define_global(&mut self, index: usize) {
+    self.emit_op(Op::DefineGlobal);
+    self.write(index);
+  }
+
+  pub fn emit_get_global(&mut self, index: usize) {
+    self.emit_op(Op::GetGlobal);
+    self.write(index);
+  }
+
+  pub fn emit_set_global(&mut self, index: usize) {
+    self.emit_op(Op::SetGlobal);
+    self.write(index);
+  }
+
   fn write(&mut self, byte: usize) {
     self.codes.push(byte);
   }
 
-  fn add_constant(&mut self, constant: Value) -> usize {
+  pub fn add_constant(&mut self, constant: Value) -> usize {
     let index = self.constants.len();
     self.constants.push(constant);
     index
@@ -85,17 +114,20 @@ impl Chunk {
     let mut buffer = String::from(format!("{}\n", prefix));
 
     let mut codes = self.codes.iter().enumerate();
-    let mut constants = self.constants.iter();
 
     while let Some((index, &code)) = codes.next() {
       buffer.push_str(&format!("{:04} ", index));
 
       let op = Op::from(code);
       let s = match op {
-        Op::Constant => self.debug_constant(&op, &mut codes, &mut constants),
+        Op::Constant => self.debug_double(&op, &mut codes),
         Op::Nil => self.debug_simple(&op),
         Op::True => self.debug_simple(&op),
         Op::False => self.debug_simple(&op),
+        Op::Pop => self.debug_simple(&op),
+        Op::GetGlobal => self.debug_double(&op, &mut codes),
+        Op::DefineGlobal => self.debug_double(&op, &mut codes),
+        Op::SetGlobal => self.debug_double(&op, &mut codes),
         Op::Equal => self.debug_simple(&op),
         Op::Greater => self.debug_simple(&op),
         Op::Less => self.debug_simple(&op),
@@ -105,6 +137,7 @@ impl Chunk {
         Op::Divide => self.debug_simple(&op),
         Op::Not => self.debug_simple(&op),
         Op::Negate => self.debug_simple(&op),
+        Op::Print => self.debug_simple(&op),
         Op::Return => self.debug_simple(&op),
       };
       buffer.push_str(&s);
@@ -117,15 +150,19 @@ impl Chunk {
     format!("{:?}\n", op)
   }
 
-  fn debug_constant(
+  fn debug_double(
     &self,
     op: &Op,
     codes: &mut Enumerate<Iter<usize>>,
-    constants: &mut Iter<Value>,
   ) -> String {
     let (_, &constant_index) = codes.next().unwrap();
-    let constant = constants.next().unwrap();
-    format!("{:<16?} {:4} '{:?}'\n", op, constant_index, constant)
+    let constant = self.constants.get(constant_index).unwrap();
+    format!(
+      "{:16} {:4} '{:?}'\n",
+      format!("{:?}", op),
+      constant_index,
+      constant
+    )
   }
 }
 

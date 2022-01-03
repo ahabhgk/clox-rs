@@ -137,7 +137,9 @@ impl TokenType {
       Self::LessEqual => {
         Rule::new(Precedence::Comparison, None, Some(Parser::binary))
       }
-      Self::Identifier => Rule::new(Precedence::None, None, None),
+      Self::Identifier => {
+        Rule::new(Precedence::None, Some(Parser::variable), None)
+      }
       Self::String => Rule::new(Precedence::None, Some(Parser::string), None),
       Self::Number => Rule::new(Precedence::None, Some(Parser::number), None),
       Self::And => Rule::new(Precedence::None, None, None),

@@ -21,8 +21,8 @@ impl Value {
     Self::Number(v)
   }
 
-  pub fn string(v: String) -> Self {
-    Self::String(v)
+  pub fn string(v: &str) -> Self {
+    Self::String(v.to_owned())
   }
 
   pub fn as_bool(&self) -> Option<bool> {

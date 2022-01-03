@@ -1,26 +1,28 @@
-use std::fmt;
+use std::{collections::HashMap, fmt, vec::IntoIter};
 
-use crate::{chunk::Op, parser::compile, value::Value};
+use crate::{chunk::Op, parser::compile, value::Value, Chunk};
 
 pub fn interpret(source: &str) -> Result<(), String> {
   let chunk = compile(source)?;
-  let mut vm = VM::new(chunk.codes.into_iter(), chunk.constants.into_iter());
+  let mut vm = VM::new(chunk);
   vm.inspect()?;
   Ok(())
 }
 
-pub struct VM<T: Iterator<Item = usize>, U: Iterator<Item = Value>> {
+pub struct VM {
   stack: Vec<Value>,
-  codes: T,
-  constants: U,
+  codes: IntoIter<usize>,
+  constants: Vec<Value>,
+  globals: HashMap<String, Value>,
 }
 
-impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
-  pub fn new(codes: T, constants: U) -> Self {
+impl VM {
+  pub fn new(chunk: Chunk) -> Self {
     Self {
       stack: Vec::new(),
-      codes,
-      constants,
+      codes: chunk.codes.into_iter(),
+      constants: chunk.constants,
+      globals: HashMap::new(),
     }
   }
 
@@ -32,8 +34,8 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
     }
     macro_rules! read_constant {
       () => {{
-        read_code!();
-        self.constants.next().unwrap()
+        let constant_index = read_code!();
+        self.constants.get(constant_index).unwrap().to_owned()
       }};
     }
     macro_rules! push {
@@ -56,7 +58,7 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
       stack_snapshot: Vec::new(),
     };
 
-    let _result = loop {
+    loop {
       inspector.stack_snapshot.push(self.stack.clone());
 
       let code = read_code!();
@@ -69,6 +71,28 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
         Op::Nil => push!(Value::nil()),
         Op::True => push!(Value::bool(true)),
         Op::False => push!(Value::bool(false)),
+        Op::Pop => {
+          pop!();
+        }
+        Op::GetGlobal => {
+          let name = read_constant!();
+          let name = name.as_string().unwrap();
+          dbg!(name);
+          let value =
+            self.globals.get(name).ok_or("Undefined variable.")?.clone();
+          push!(value);
+        }
+        Op::DefineGlobal => {
+          let name = read_constant!().as_string().unwrap().to_owned();
+          self.globals.insert(name, pop!());
+        }
+        Op::SetGlobal => {
+          let name = read_constant!().as_string().unwrap().to_owned();
+          self
+            .globals
+            .insert(name, peek!(0).clone())
+            .ok_or("Undefined variable.")?;
+        }
         Op::Equal => {
           let b = pop!();
           let a = pop!();
@@ -90,7 +114,7 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
           if b.is_string() && a.is_string() {
             let b = b.as_string().unwrap();
             let a = a.as_string().unwrap();
-            let concat = format!("{}{}", a, b);
+            let concat = &format!("{}{}", a, b);
             push!(Value::string(concat));
           } else if b.is_number() && a.is_number() {
             let b = b.as_number().unwrap();
@@ -125,9 +149,10 @@ impl<T: Iterator<Item = usize>, U: Iterator<Item = Value>> VM<T, U> {
           let v = pop!().as_number().ok_or("Operand must be a number.")?;
           push!(Value::number(-v));
         }
-        Op::Return => break pop!(),
-      }
-    };
+        Op::Print => println!("{:?}", pop!()),
+        Op::Return => break,
+      };
+    }
     Ok(inspector)
   }
 }
