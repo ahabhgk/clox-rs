@@ -20,6 +20,20 @@ macro_rules! assert_snapshot {
     let inspector = vm.inspect().unwrap();
     check(&inspector, expect![[$stack_snapshot]])
   };
+  ($source:literal, $message:literal) => {
+    fn get_err() -> Result<(), String> {
+      let scanner = Scanner::new($source);
+      let mut chunk = Chunk::new();
+      let mut parser = Parser::new(scanner, &mut chunk);
+      parser.advance()?;
+      parser.program()?;
+      parser.end();
+      let mut vm = VM::new(chunk);
+      let _ = vm.inspect()?;
+      Ok(())
+    }
+    assert_eq!(get_err().unwrap_err(), $message);
+  };
 }
 
 #[test]
@@ -162,7 +176,7 @@ print 3 * 4;
 }
 
 #[test]
-fn chapter_21_var_uninit() {
+fn chapter_21_global_uninit() {
   assert_snapshot!(
     r#"var a;"#,
     r#"
@@ -182,7 +196,7 @@ fn chapter_21_var_uninit() {
   );
 }
 #[test]
-fn chapter_21_var_init() {
+fn chapter_21_global_init() {
   assert_snapshot!(
     r#"var a = 0;"#,
     r#"
@@ -241,6 +255,158 @@ print a;
 ["assign add bbb"]
 []
 ["assign add bbb"]
+[]
+
+"#
+  );
+}
+
+#[test]
+fn chapter_22_local() {
+  assert_snapshot!(
+    r#"
+{
+  var a = "first";
+  var b = "second";
+  print a + b;
+}
+"#,
+    r#"
+== Bytecodes ==
+0000 Constant            0 '"first"'
+0002 Constant            1 '"second"'
+0004 GetLocal            0
+0006 GetLocal            1
+0008 Add
+0009 Print
+0010 Pop
+0011 Pop
+0012 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[]
+["first"]
+["first", "second"]
+["first", "second", "first"]
+["first", "second", "first", "second"]
+["first", "second", "firstsecond"]
+["first", "second"]
+["first"]
+[]
+
+"#
+  );
+}
+
+#[test]
+fn chapter_22_local_uninit() {
+  assert_snapshot!(
+    r#"
+{
+  var a = "outer";
+  {
+    var a = a;
+  }
+}
+"#,
+    "Can't read local variable in its own initializer."
+  );
+}
+
+#[test]
+fn chapter_22() {
+  assert_snapshot!(
+    r#"
+{
+  var a = 1;
+  {
+    var b = 2;
+    {
+      var c = 3;
+      {
+        var d = 4;
+        print a + b + c + d;
+      }
+      var e = 5;
+      print a + e;
+    }
+  }
+  var f = 6;
+  {
+    var g = 7;
+    print f + g;
+  }
+}
+"#,
+    r#"
+== Bytecodes ==
+0000 Constant            0 '1'
+0002 Constant            1 '2'
+0004 Constant            2 '3'
+0006 Constant            3 '4'
+0008 GetLocal            0
+0010 GetLocal            1
+0012 Add
+0013 GetLocal            2
+0015 Add
+0016 GetLocal            3
+0018 Add
+0019 Print
+0020 Pop
+0021 Constant            4 '5'
+0023 GetLocal            0
+0025 GetLocal            3
+0027 Add
+0028 Print
+0029 Pop
+0030 Pop
+0031 Pop
+0032 Constant            5 '6'
+0034 Constant            6 '7'
+0036 GetLocal            1
+0038 GetLocal            2
+0040 Add
+0041 Print
+0042 Pop
+0043 Pop
+0044 Pop
+0045 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[]
+[1]
+[1, 2]
+[1, 2, 3]
+[1, 2, 3, 4]
+[1, 2, 3, 4, 1]
+[1, 2, 3, 4, 1, 2]
+[1, 2, 3, 4, 3]
+[1, 2, 3, 4, 3, 3]
+[1, 2, 3, 4, 6]
+[1, 2, 3, 4, 6, 4]
+[1, 2, 3, 4, 10]
+[1, 2, 3, 4]
+[1, 2, 3]
+[1, 2, 3, 5]
+[1, 2, 3, 5, 1]
+[1, 2, 3, 5, 1, 5]
+[1, 2, 3, 5, 6]
+[1, 2, 3, 5]
+[1, 2, 3]
+[1, 2]
+[1]
+[1, 6]
+[1, 6, 7]
+[1, 6, 7, 6]
+[1, 6, 7, 6, 7]
+[1, 6, 7, 13]
+[1, 6, 7]
+[1, 6]
+[1]
 []
 
 "#

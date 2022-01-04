@@ -5,6 +5,7 @@ mod source;
 mod token;
 mod value;
 mod vm;
+mod scope;
 
 pub use chunk::Chunk;
 pub use parser::Parser;

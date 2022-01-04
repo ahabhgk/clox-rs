@@ -1,6 +1,7 @@
 use crate::{
   chunk::{Chunk, Op},
   scanner::Scanner,
+  scope::Scopes,
   token::{Precedence, Token, TokenType},
   value::Value,
 };
@@ -19,6 +20,7 @@ pub struct Parser<'source, 'chunk> {
   peek: Option<Token>,
   scanner: Scanner<'source>,
   chunk: &'chunk mut Chunk,
+  scopes: Scopes,
 }
 
 pub type ParseFn<'s, 'c> =
@@ -30,6 +32,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
       peek: None,
       scanner,
       chunk,
+      scopes: Scopes::new(),
     }
   }
 
@@ -59,6 +62,14 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     self.eat(token_type, "").is_ok()
   }
 
+  fn is_end(&self) -> bool {
+    matches!(self.peek, None)
+  }
+
+  fn check(&self, token_type: TokenType) -> bool {
+    matches!(&self.peek, Some(p) if p.token_type == token_type)
+  }
+
   pub fn expression(&mut self) -> Result<(), String> {
     self.parse_precedence(Precedence::Assignment)
   }
@@ -77,17 +88,58 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     Ok(())
   }
 
+  fn begin_scope(&mut self) {
+    self.scopes.push();
+  }
+
+  fn end_scope(&mut self) {
+    let scope = self.scopes.pop().unwrap();
+
+    for _ in 0..scope.len() {
+      self.chunk.emit_op(Op::Pop);
+    }
+  }
+
   pub fn statement(&mut self) -> Result<(), String> {
     if self.match_token(TokenType::Print) {
       self.print_statement()?;
+    } else if self.match_token(TokenType::LeftBrace) {
+      self.begin_scope();
+      self.block()?;
+      self.end_scope();
     } else {
       self.expression_statement()?;
     }
     Ok(())
   }
 
+  fn block(&mut self) -> Result<(), String> {
+    while !self.is_end() && !self.check(TokenType::RightBrace) {
+      self.declaration()?;
+    }
+
+    self.eat(TokenType::RightBrace, "Expect '}' after block.")?;
+    Ok(())
+  }
+
   pub fn var_declaration(&mut self) -> Result<(), String> {
-    let global = self.parse_variable("Expect variable name.")?;
+    let token = self.eat(TokenType::Identifier, "Expect variable name.")?;
+    let name = &token.source;
+
+    let global = if self.scopes.is_empty() {
+      let global = self.chunk.add_constant(Value::string(name));
+      Some(global)
+    } else {
+      if self.scopes.current_has(name).unwrap() {
+        return Err(
+          "Already a variable with this name in this scope.".to_owned(),
+        );
+      } else {
+        self.scopes.define_uninit_local(name.to_owned())?;
+        None
+      }
+    };
+
     if self.match_token(TokenType::Equal) {
       self.expression()?;
     } else {
@@ -97,7 +149,11 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
       TokenType::Semicolon,
       "Expect ';' after variable declaration.",
     )?;
-    self.chunk.emit_define_global(global);
+
+    match global {
+      Some(global) => self.chunk.emit_define_global(global),
+      None => self.scopes.mark_init_local(name),
+    }
     Ok(())
   }
 
@@ -110,7 +166,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
   }
 
   pub fn program(&mut self) -> Result<(), String> {
-    while matches!(self.peek, Some(_)) {
+    while !self.is_end() {
       self.declaration()?;
     }
     Ok(())
@@ -141,25 +197,34 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     Ok(())
   }
 
-  pub fn parse_variable(&mut self, message: &str) -> Result<usize, String> {
-    let token = self.eat(TokenType::Identifier, message)?;
-    let name = &token.source;
-    let id = self.chunk.add_constant(Value::string(name));
-    Ok(id)
-  }
-
   pub fn variable(
     &mut self,
     token: Token,
     can_assign: bool,
   ) -> Result<(), String> {
+    let is_set = can_assign && self.match_token(TokenType::Equal);
     let name = &token.source;
-    let id = self.chunk.add_constant(Value::string(name));
-    if can_assign && self.match_token(TokenType::Equal) {
-      self.expression()?;
-      self.chunk.emit_set_global(id);
-    } else {
-      self.chunk.emit_get_global(id);
+    let local = self.scopes.resolve_local(name)?;
+    match (is_set, local) {
+      (true, None) => {
+        let name = &token.source;
+        let global = self.chunk.add_constant(Value::string(name));
+        self.expression()?;
+        self.chunk.emit_set_global(global);
+      }
+      (false, None) => {
+        let name = &token.source;
+        let global = self.chunk.add_constant(Value::string(name));
+        self.chunk.emit_get_global(global);
+      }
+      (true, Some(local)) => {
+        let index = local.index;
+        self.expression()?;
+        self.chunk.emit_set_local(index);
+      }
+      (false, Some(local)) => {
+        self.chunk.emit_get_local(local.index);
+      }
     }
     Ok(())
   }

@@ -74,6 +74,17 @@ impl VM {
         Op::Pop => {
           pop!();
         }
+        Op::GetLocal => {
+          let index = read_code!();
+          let value = self.stack.get(index).unwrap().clone();
+          push!(value);
+        }
+        Op::SetLocal => {
+          let index = read_code!();
+          let new_value = peek!(0).clone();
+          let old_value = self.stack.get_mut(index).unwrap();
+          *old_value = new_value;
+        }
         Op::GetGlobal => {
           let name = read_constant!();
           let name = name.as_string().unwrap();

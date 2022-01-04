@@ -13,6 +13,8 @@ pub enum Op {
   True,
   False,
   Pop,
+  GetLocal,
+  SetLocal,
   GetGlobal,
   DefineGlobal,
   SetGlobal,
@@ -43,20 +45,22 @@ impl From<usize> for Op {
       2 => Self::True,
       3 => Self::False,
       4 => Self::Pop,
-      5 => Self::GetGlobal,
-      6 => Self::DefineGlobal,
-      7 => Self::SetGlobal,
-      8 => Self::Equal,
-      9 => Self::Greater,
-      10 => Self::Less,
-      11 => Self::Add,
-      12 => Self::Subtract,
-      13 => Self::Multiply,
-      14 => Self::Divide,
-      15 => Self::Not,
-      16 => Self::Negate,
-      17 => Self::Print,
-      18 => Self::Return,
+      5 => Self::GetLocal,
+      6 => Self::SetLocal,
+      7 => Self::GetGlobal,
+      8 => Self::DefineGlobal,
+      9 => Self::SetGlobal,
+      10 => Self::Equal,
+      11 => Self::Greater,
+      12 => Self::Less,
+      13 => Self::Add,
+      14 => Self::Subtract,
+      15 => Self::Multiply,
+      16 => Self::Divide,
+      17 => Self::Not,
+      18 => Self::Negate,
+      19 => Self::Print,
+      20 => Self::Return,
       _ => unreachable!(),
     }
   }
@@ -100,6 +104,16 @@ impl Chunk {
     self.write(index);
   }
 
+  pub fn emit_get_local(&mut self, index: usize) {
+    self.emit_op(Op::GetLocal);
+    self.write(index);
+  }
+
+  pub fn emit_set_local(&mut self, index: usize) {
+    self.emit_op(Op::SetLocal);
+    self.write(index);
+  }
+
   fn write(&mut self, byte: usize) {
     self.codes.push(byte);
   }
@@ -125,6 +139,8 @@ impl Chunk {
         Op::True => self.debug_simple(&op),
         Op::False => self.debug_simple(&op),
         Op::Pop => self.debug_simple(&op),
+        Op::GetLocal => self.debug_index(&op, &mut codes),
+        Op::SetLocal => self.debug_index(&op, &mut codes),
         Op::GetGlobal => self.debug_double(&op, &mut codes),
         Op::DefineGlobal => self.debug_double(&op, &mut codes),
         Op::SetGlobal => self.debug_double(&op, &mut codes),
@@ -163,6 +179,11 @@ impl Chunk {
       constant_index,
       constant
     )
+  }
+
+  fn debug_index(&self, op: &Op, codes: &mut Enumerate<Iter<usize>>) -> String {
+    let (_, &index) = codes.next().unwrap();
+    format!("{:16} {:4}\n", format!("{:?}", op), index)
   }
 }
 

@@ -1,6 +1,6 @@
 use crate::parser::{ParseFn, Parser};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum TokenType {
   // Single-character tokens.
   LeftParen,
@@ -162,7 +162,7 @@ impl TokenType {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Token {
   pub token_type: TokenType,
   pub start: usize,
