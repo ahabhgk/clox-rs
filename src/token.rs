@@ -142,7 +142,7 @@ impl TokenType {
       }
       Self::String => Rule::new(Precedence::None, Some(Parser::string), None),
       Self::Number => Rule::new(Precedence::None, Some(Parser::number), None),
-      Self::And => Rule::new(Precedence::None, None, None),
+      Self::And => Rule::new(Precedence::And, None, Some(Parser::and)),
       Self::Class => Rule::new(Precedence::None, None, None),
       Self::Else => Rule::new(Precedence::None, None, None),
       Self::False => Rule::new(Precedence::None, Some(Parser::literal), None),
@@ -150,7 +150,7 @@ impl TokenType {
       Self::Fun => Rule::new(Precedence::None, None, None),
       Self::If => Rule::new(Precedence::None, None, None),
       Self::Nil => Rule::new(Precedence::None, Some(Parser::literal), None),
-      Self::Or => Rule::new(Precedence::None, None, None),
+      Self::Or => Rule::new(Precedence::Or, None, Some(Parser::or)),
       Self::Print => Rule::new(Precedence::None, None, None),
       Self::Return => Rule::new(Precedence::None, None, None),
       Self::Super => Rule::new(Precedence::None, None, None),

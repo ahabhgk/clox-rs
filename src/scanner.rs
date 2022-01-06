@@ -199,26 +199,26 @@ impl<'source> Scanner<'source> {
 
   fn keyword_or_identifier_type(&self) -> TokenType {
     match self.get(self.start).unwrap() {
-      'a' => self.check_keyword(1, 2, "nd", TokenType::And),
-      'c' => self.check_keyword(1, 4, "lass", TokenType::Class),
-      'e' => self.check_keyword(1, 3, "lse", TokenType::Else),
-      'i' => self.check_keyword(1, 1, "f", TokenType::If),
-      'n' => self.check_keyword(1, 2, "il", TokenType::Nil),
-      'o' => self.check_keyword(1, 1, "r", TokenType::Or),
-      'p' => self.check_keyword(1, 4, "rint", TokenType::Print),
-      'r' => self.check_keyword(1, 5, "eturn", TokenType::Return),
-      's' => self.check_keyword(1, 4, "uper", TokenType::Super),
-      'v' => self.check_keyword(1, 2, "ar", TokenType::Var),
-      'w' => self.check_keyword(1, 4, "hile", TokenType::While),
+      'a' => self.check_keyword(1, "nd", TokenType::And),
+      'c' => self.check_keyword(1, "lass", TokenType::Class),
+      'e' => self.check_keyword(1, "lse", TokenType::Else),
+      'i' => self.check_keyword(1, "f", TokenType::If),
+      'n' => self.check_keyword(1, "il", TokenType::Nil),
+      'o' => self.check_keyword(1, "r", TokenType::Or),
+      'p' => self.check_keyword(1, "rint", TokenType::Print),
+      'r' => self.check_keyword(1, "eturn", TokenType::Return),
+      's' => self.check_keyword(1, "uper", TokenType::Super),
+      'v' => self.check_keyword(1, "ar", TokenType::Var),
+      'w' => self.check_keyword(1, "hile", TokenType::While),
       'f' => match self.get(self.start + 1) {
-        Some('a') => self.check_keyword(2, 3, "lse", TokenType::False),
-        Some('o') => self.check_keyword(2, 1, "r", TokenType::For),
-        Some('u') => self.check_keyword(2, 1, "n", TokenType::Fun),
+        Some('a') => self.check_keyword(2, "lse", TokenType::False),
+        Some('o') => self.check_keyword(2, "r", TokenType::For),
+        Some('u') => self.check_keyword(2, "n", TokenType::Fun),
         _ => TokenType::Identifier,
       },
       't' => match self.get(self.start + 1) {
-        Some('h') => self.check_keyword(2, 2, "his", TokenType::This),
-        Some('r') => self.check_keyword(2, 2, "rue", TokenType::True),
+        Some('h') => self.check_keyword(2, "is", TokenType::This),
+        Some('r') => self.check_keyword(2, "ue", TokenType::True),
         _ => TokenType::Identifier,
       },
       _ => TokenType::Identifier,
@@ -228,12 +228,12 @@ impl<'source> Scanner<'source> {
   fn check_keyword(
     &self,
     start: usize,
-    length: usize,
     rest: &str,
     token_type: TokenType,
   ) -> TokenType {
-    if self.index - self.start == start + length
-      && self.slice(self.start + start, self.start + start + length) == rest
+    let len = rest.len();
+    if self.index - self.start == start + len
+      && self.slice(self.start + start, self.start + start + len) == rest
     {
       return token_type;
     }

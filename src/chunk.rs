@@ -28,6 +28,9 @@ pub enum Op {
   Not,
   Negate,
   Print,
+  Jump,
+  JumpIfFalse,
+  Loop,
   Return,
 }
 
@@ -60,7 +63,10 @@ impl From<usize> for Op {
       17 => Self::Not,
       18 => Self::Negate,
       19 => Self::Print,
-      20 => Self::Return,
+      20 => Self::Jump,
+      21 => Self::JumpIfFalse,
+      22 => Self::Loop,
+      23 => Self::Return,
       _ => unreachable!(),
     }
   }
@@ -79,43 +85,70 @@ impl Chunk {
     }
   }
 
+  pub fn code_len(&self) -> usize {
+    self.codes.len()
+  }
+
   pub fn emit_op(&mut self, op: Op) {
-    self.write(op.into())
+    self.push(op.into())
   }
 
   pub fn emit_constant(&mut self, constant: Value) {
     let index = self.add_constant(constant);
     self.emit_op(Op::Constant);
-    self.write(index);
+    self.push(index);
   }
 
   pub fn emit_define_global(&mut self, index: usize) {
     self.emit_op(Op::DefineGlobal);
-    self.write(index);
+    self.push(index);
   }
 
   pub fn emit_get_global(&mut self, index: usize) {
     self.emit_op(Op::GetGlobal);
-    self.write(index);
+    self.push(index);
   }
 
   pub fn emit_set_global(&mut self, index: usize) {
     self.emit_op(Op::SetGlobal);
-    self.write(index);
+    self.push(index);
   }
 
   pub fn emit_get_local(&mut self, index: usize) {
     self.emit_op(Op::GetLocal);
-    self.write(index);
+    self.push(index);
   }
 
   pub fn emit_set_local(&mut self, index: usize) {
     self.emit_op(Op::SetLocal);
-    self.write(index);
+    self.push(index);
   }
 
-  fn write(&mut self, byte: usize) {
+  pub fn emit_jump(&mut self, op: Op) -> usize {
+    self.emit_op(op);
+    self.push(0xff);
+    self.codes.len() - 1
+  }
+
+  pub fn patch_jump(&mut self, start: usize) {
+    let offset = self.codes.len() - 1 - start;
+    self.write(offset, start).unwrap();
+  }
+
+  pub fn emit_loop(&mut self, start: usize) {
+    let offset = self.codes.len() + 2 - start;
+    self.emit_op(Op::Loop);
+    self.push(offset);
+  }
+
+  fn push(&mut self, byte: usize) {
     self.codes.push(byte);
+  }
+
+  fn write(&mut self, byte: usize, at: usize) -> Result<(), String> {
+    let old = self.codes.get_mut(at).ok_or("The index is out of bound")?;
+    *old = byte;
+    Ok(())
   }
 
   pub fn add_constant(&mut self, constant: Value) -> usize {
@@ -154,6 +187,9 @@ impl Chunk {
         Op::Not => self.debug_simple(&op),
         Op::Negate => self.debug_simple(&op),
         Op::Print => self.debug_simple(&op),
+        Op::Jump => self.debug_jump(&op, index, true, &mut codes),
+        Op::JumpIfFalse => self.debug_jump(&op, index, true, &mut codes),
+        Op::Loop => self.debug_jump(&op, index, false, &mut codes),
         Op::Return => self.debug_simple(&op),
       };
       buffer.push_str(&s);
@@ -184,6 +220,22 @@ impl Chunk {
   fn debug_index(&self, op: &Op, codes: &mut Enumerate<Iter<usize>>) -> String {
     let (_, &index) = codes.next().unwrap();
     format!("{:16} {:4}\n", format!("{:?}", op), index)
+  }
+
+  fn debug_jump(
+    &self,
+    op: &Op,
+    from: usize,
+    is_forward: bool,
+    codes: &mut Enumerate<Iter<usize>>,
+  ) -> String {
+    let (index, &offset) = codes.next().unwrap();
+    let to = if is_forward {
+      index + 1 + offset
+    } else {
+      index + 1 - offset
+    };
+    format!("{:16} {:4} -> {}\n", format!("{:?}", op), from, to)
   }
 }
 

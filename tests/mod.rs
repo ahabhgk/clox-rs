@@ -412,3 +412,236 @@ fn chapter_22() {
 "#
   );
 }
+
+#[test]
+fn chapter_23_if_else() {
+  assert_snapshot!(
+    r#"if (true) print "yes"; else print "no";"#,
+    r#"
+== Bytecodes ==
+0000 True
+0001 JumpIfFalse         1 -> 9
+0003 Pop
+0004 Constant            0 '"yes"'
+0006 Print
+0007 Jump                7 -> 13
+0009 Pop
+0010 Constant            1 '"no"'
+0012 Print
+0013 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[]
+[true]
+[true]
+[]
+["yes"]
+[]
+[]
+
+"#
+  );
+}
+
+#[test]
+fn chapter_23_and_or() {
+  assert_snapshot!(
+    r#"
+nil and "bad";
+1 or true;
+"#,
+    r#"
+== Bytecodes ==
+0000 Nil
+0001 JumpIfFalse         1 -> 6
+0003 Pop
+0004 Constant            0 '"bad"'
+0006 Pop
+0007 Constant            1 '1'
+0009 JumpIfFalse         9 -> 13
+0011 Jump               11 -> 15
+0013 Pop
+0014 True
+0015 Pop
+0016 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[]
+[nil]
+[nil]
+[]
+[1]
+[1]
+[1]
+[]
+
+"#
+  );
+}
+
+#[test]
+fn chapter_23_while() {
+  assert_snapshot!(
+    r#"
+var a = 0;
+while (a < 3) {
+  a = a + 1;
+}
+"#,
+    r#"
+== Bytecodes ==
+0000 Constant            1 '0'
+0002 DefineGlobal        0 '"a"'
+0004 GetGlobal           2 '"a"'
+0006 Constant            3 '3'
+0008 Less
+0009 JumpIfFalse         9 -> 22
+0011 Pop
+0012 GetGlobal           5 '"a"'
+0014 Constant            6 '1'
+0016 Add
+0017 SetGlobal           4 '"a"'
+0019 Pop
+0020 Loop               20 -> 4
+0022 Pop
+0023 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[]
+[0]
+[]
+[0]
+[0, 3]
+[true]
+[true]
+[]
+[0]
+[0, 1]
+[1]
+[1]
+[]
+[]
+[1]
+[1, 3]
+[true]
+[true]
+[]
+[1]
+[1, 1]
+[2]
+[2]
+[]
+[]
+[2]
+[2, 3]
+[true]
+[true]
+[]
+[2]
+[2, 1]
+[3]
+[3]
+[]
+[]
+[3]
+[3, 3]
+[false]
+[false]
+[]
+
+"#
+  );
+}
+
+#[test]
+fn chapter_23_for() {
+  assert_snapshot!(
+    r#"for (var a = 0; a < 3; a = a + 1) print a;"#,
+    r#"
+== Bytecodes ==
+0000 Constant            0 '0'
+0002 GetLocal            0
+0004 Constant            1 '3'
+0006 Less
+0007 JumpIfFalse         7 -> 27
+0009 Pop
+0010 Jump               10 -> 22
+0012 GetLocal            0
+0014 Constant            2 '1'
+0016 Add
+0017 SetLocal            0
+0019 Pop
+0020 Loop               20 -> 2
+0022 GetLocal            0
+0024 Print
+0025 Loop               25 -> 12
+0027 Pop
+0028 Pop
+0029 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[]
+[0]
+[0, 0]
+[0, 0, 3]
+[0, true]
+[0, true]
+[0]
+[0]
+[0, 0]
+[0]
+[0]
+[0, 0]
+[0, 0, 1]
+[0, 1]
+[1, 1]
+[1]
+[1]
+[1, 1]
+[1, 1, 3]
+[1, true]
+[1, true]
+[1]
+[1]
+[1, 1]
+[1]
+[1]
+[1, 1]
+[1, 1, 1]
+[1, 2]
+[2, 2]
+[2]
+[2]
+[2, 2]
+[2, 2, 3]
+[2, true]
+[2, true]
+[2]
+[2]
+[2, 2]
+[2]
+[2]
+[2, 2]
+[2, 2, 1]
+[2, 3]
+[3, 3]
+[3]
+[3]
+[3, 3]
+[3, 3, 3]
+[3, false]
+[3, false]
+[3]
+[]
+
+"#
+  );
+}

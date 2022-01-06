@@ -46,7 +46,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     Ok(current)
   }
 
-  pub fn eat(
+  fn eat(
     &mut self,
     token_type: TokenType,
     message: &str,
@@ -58,7 +58,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     Err(message.to_owned())
   }
 
-  pub fn match_token(&mut self, token_type: TokenType) -> bool {
+  fn match_token(&mut self, token_type: TokenType) -> bool {
     self.eat(token_type, "").is_ok()
   }
 
@@ -70,21 +70,107 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     matches!(&self.peek, Some(p) if p.token_type == token_type)
   }
 
-  pub fn expression(&mut self) -> Result<(), String> {
+  fn expression(&mut self) -> Result<(), String> {
     self.parse_precedence(Precedence::Assignment)
   }
 
-  pub fn print_statement(&mut self) -> Result<(), String> {
+  fn print_statement(&mut self) -> Result<(), String> {
     self.expression()?;
     self.eat(TokenType::Semicolon, "Expect ';' after value.")?;
     self.chunk.emit_op(Op::Print);
     Ok(())
   }
 
-  pub fn expression_statement(&mut self) -> Result<(), String> {
+  fn expression_statement(&mut self) -> Result<(), String> {
     self.expression()?;
     self.eat(TokenType::Semicolon, "Expect ';' after expression.")?;
     self.chunk.emit_op(Op::Pop);
+    Ok(())
+  }
+
+  fn if_statement(&mut self) -> Result<(), String> {
+    self.eat(TokenType::LeftParen, "Expect '(' after 'if'.")?;
+    self.expression()?;
+    self.eat(TokenType::RightParen, "Expect ')' after condition.")?;
+
+    let then_jump = self.chunk.emit_jump(Op::JumpIfFalse);
+    self.chunk.emit_op(Op::Pop);
+    self.statement()?;
+
+    let else_jump = self.chunk.emit_jump(Op::Jump);
+
+    self.chunk.patch_jump(then_jump);
+    self.chunk.emit_op(Op::Pop);
+
+    if self.match_token(TokenType::Else) {
+      self.statement()?;
+    }
+    self.chunk.patch_jump(else_jump);
+
+    Ok(())
+  }
+
+  fn while_statement(&mut self) -> Result<(), String> {
+    let loop_start = self.chunk.code_len();
+    self.eat(TokenType::LeftParen, "Expect '(' after 'while'.")?;
+    self.expression()?;
+    self.eat(TokenType::RightParen, "Expect ')' after condition.")?;
+
+    let exit_jump = self.chunk.emit_jump(Op::JumpIfFalse);
+    self.chunk.emit_op(Op::Pop);
+    self.statement()?;
+    self.chunk.emit_loop(loop_start);
+
+    self.chunk.patch_jump(exit_jump);
+    self.chunk.emit_op(Op::Pop);
+
+    Ok(())
+  }
+
+  fn for_statement(&mut self) -> Result<(), String> {
+    self.begin_scope();
+
+    self.eat(TokenType::LeftParen, "Expect '(' after 'for'.")?;
+    if self.match_token(TokenType::Semicolon) {
+      // No initializer
+    } else if self.match_token(TokenType::Var) {
+      self.var_declaration()?;
+    } else {
+      self.expression_statement()?;
+    }
+
+    let mut loop_start = self.chunk.code_len();
+
+    let mut exit_jump = None;
+    if !self.match_token(TokenType::Semicolon) {
+      self.expression()?;
+      self.eat(TokenType::Semicolon, "Expect ';' after loop condition.")?;
+
+      exit_jump = Some(self.chunk.emit_jump(Op::JumpIfFalse));
+      self.chunk.emit_op(Op::Pop);
+    }
+
+    if !self.match_token(TokenType::RightParen) {
+      let body_jump = self.chunk.emit_jump(Op::Jump);
+      let increment_start = self.chunk.code_len();
+      self.expression()?;
+      self.chunk.emit_op(Op::Pop);
+      self.eat(TokenType::RightParen, "Expect ')' after for clauses.")?;
+
+      self.chunk.emit_loop(loop_start);
+      loop_start = increment_start;
+      self.chunk.patch_jump(body_jump);
+    }
+
+    self.statement()?;
+    self.chunk.emit_loop(loop_start);
+
+    if let Some(exit_jump) = exit_jump {
+      self.chunk.patch_jump(exit_jump);
+      self.chunk.emit_op(Op::Pop);
+    }
+
+    self.end_scope();
     Ok(())
   }
 
@@ -100,9 +186,15 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     }
   }
 
-  pub fn statement(&mut self) -> Result<(), String> {
+  fn statement(&mut self) -> Result<(), String> {
     if self.match_token(TokenType::Print) {
       self.print_statement()?;
+    } else if self.match_token(TokenType::If) {
+      self.if_statement()?;
+    } else if self.match_token(TokenType::While) {
+      self.while_statement()?;
+    } else if self.match_token(TokenType::For) {
+      self.for_statement()?;
     } else if self.match_token(TokenType::LeftBrace) {
       self.begin_scope();
       self.block()?;
@@ -122,7 +214,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     Ok(())
   }
 
-  pub fn var_declaration(&mut self) -> Result<(), String> {
+  fn var_declaration(&mut self) -> Result<(), String> {
     let token = self.eat(TokenType::Identifier, "Expect variable name.")?;
     let name = &token.source;
 
@@ -157,7 +249,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     Ok(())
   }
 
-  pub fn declaration(&mut self) -> Result<(), String> {
+  fn declaration(&mut self) -> Result<(), String> {
     if self.match_token(TokenType::Var) {
       self.var_declaration()
     } else {
@@ -172,10 +264,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     Ok(())
   }
 
-  pub fn parse_precedence(
-    &mut self,
-    precedence: Precedence,
-  ) -> Result<(), String> {
+  fn parse_precedence(&mut self, precedence: Precedence) -> Result<(), String> {
     if let Some(token) = self.advance()? {
       let prefix =
         token.token_type.rule().prefix.ok_or("Expect expression.")?;
@@ -321,6 +410,28 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
       TokenType::Slash => self.chunk.emit_op(Op::Divide),
       _ => unreachable!(),
     }
+    Ok(())
+  }
+
+  pub fn and(
+    &mut self,
+    _token: Token,
+    _can_assign: bool,
+  ) -> Result<(), String> {
+    let end_jump = self.chunk.emit_jump(Op::JumpIfFalse);
+    self.chunk.emit_op(Op::Pop);
+    self.parse_precedence(Precedence::And)?;
+    self.chunk.patch_jump(end_jump);
+    Ok(())
+  }
+
+  pub fn or(&mut self, _token: Token, _can_assign: bool) -> Result<(), String> {
+    let else_jump = self.chunk.emit_jump(Op::JumpIfFalse);
+    let end_jump = self.chunk.emit_jump(Op::Jump);
+    self.chunk.patch_jump(else_jump);
+    self.chunk.emit_op(Op::Pop);
+    self.parse_precedence(Precedence::Or)?;
+    self.chunk.patch_jump(end_jump);
     Ok(())
   }
 }

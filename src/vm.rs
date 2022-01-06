@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, vec::IntoIter};
+use std::{collections::HashMap, fmt};
 
 use crate::{chunk::Op, parser::compile, value::Value, Chunk};
 
@@ -11,7 +11,7 @@ pub fn interpret(source: &str) -> Result<(), String> {
 
 pub struct VM {
   stack: Vec<Value>,
-  codes: IntoIter<usize>,
+  codes: Vec<usize>,
   constants: Vec<Value>,
   globals: HashMap<String, Value>,
 }
@@ -20,22 +20,25 @@ impl VM {
   pub fn new(chunk: Chunk) -> Self {
     Self {
       stack: Vec::new(),
-      codes: chunk.codes.into_iter(),
+      codes: chunk.codes,
       constants: chunk.constants,
       globals: HashMap::new(),
     }
   }
 
   pub fn inspect(&mut self) -> Result<Inspector, String> {
+    let mut i = 0;
     macro_rules! read_code {
-      () => {
-        self.codes.next().unwrap()
-      };
+      () => {{
+        let code = *self.codes.get(i).unwrap();
+        i += 1;
+        code
+      }};
     }
     macro_rules! read_constant {
       () => {{
         let constant_index = read_code!();
-        self.constants.get(constant_index).unwrap().to_owned()
+        self.constants.get(constant_index).unwrap().clone()
       }};
     }
     macro_rules! push {
@@ -88,7 +91,6 @@ impl VM {
         Op::GetGlobal => {
           let name = read_constant!();
           let name = name.as_string().unwrap();
-          dbg!(name);
           let value =
             self.globals.get(name).ok_or("Undefined variable.")?.clone();
           push!(value);
@@ -161,6 +163,24 @@ impl VM {
           push!(Value::number(-v));
         }
         Op::Print => println!("{:?}", pop!()),
+        Op::Jump => {
+          let jump_offset = read_code!();
+          for _ in 0..jump_offset {
+            read_code!();
+          }
+        }
+        Op::JumpIfFalse => {
+          let jump_offset = read_code!();
+          if peek!(0).is_falsey() {
+            for _ in 0..jump_offset {
+              read_code!();
+            }
+          }
+        }
+        Op::Loop => {
+          let offset = read_code!();
+          i -= offset;
+        }
         Op::Return => break,
       };
     }
