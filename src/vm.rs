@@ -11,7 +11,7 @@ pub fn interpret(source: &str) -> Result<(), String> {
 
 pub struct VM {
   stack: Vec<Value>,
-  codes: Vec<usize>,
+  codes: Vec<u8>,
   constants: Vec<Value>,
   globals: HashMap<String, Value>,
 }
@@ -28,17 +28,24 @@ impl VM {
 
   pub fn inspect(&mut self) -> Result<Inspector, String> {
     let mut i = 0;
-    macro_rules! read_code {
+    macro_rules! read_byte {
       () => {{
         let code = *self.codes.get(i).unwrap();
         i += 1;
         code
       }};
     }
+    macro_rules! read_short {
+      () => {{
+        let offset_0 = read_byte!();
+        let offset_1 = read_byte!();
+        unsafe { *[offset_0, offset_1].as_ptr().cast::<u16>() }
+      }};
+    }
     macro_rules! read_constant {
       () => {{
-        let constant_index = read_code!();
-        self.constants.get(constant_index).unwrap().clone()
+        let constant_index = read_byte!();
+        self.constants.get(constant_index as usize).unwrap().clone()
       }};
     }
     macro_rules! push {
@@ -64,7 +71,7 @@ impl VM {
     loop {
       inspector.stack_snapshot.push(self.stack.clone());
 
-      let code = read_code!();
+      let code = read_byte!();
       let op = Op::from(code);
       match op {
         Op::Constant => {
@@ -78,14 +85,14 @@ impl VM {
           pop!();
         }
         Op::GetLocal => {
-          let index = read_code!();
-          let value = self.stack.get(index).unwrap().clone();
+          let index = read_byte!();
+          let value = self.stack.get(index as usize).unwrap().clone();
           push!(value);
         }
         Op::SetLocal => {
-          let index = read_code!();
+          let index = read_byte!();
           let new_value = peek!(0).clone();
-          let old_value = self.stack.get_mut(index).unwrap();
+          let old_value = self.stack.get_mut(index as usize).unwrap();
           *old_value = new_value;
         }
         Op::GetGlobal => {
@@ -164,22 +171,22 @@ impl VM {
         }
         Op::Print => println!("{:?}", pop!()),
         Op::Jump => {
-          let jump_offset = read_code!();
+          let jump_offset = read_short!();
           for _ in 0..jump_offset {
-            read_code!();
+            read_byte!();
           }
         }
         Op::JumpIfFalse => {
-          let jump_offset = read_code!();
+          let jump_offset = read_short!();
           if peek!(0).is_falsey() {
             for _ in 0..jump_offset {
-              read_code!();
+              read_byte!();
             }
           }
         }
         Op::Loop => {
-          let offset = read_code!();
-          i -= offset;
+          let offset = read_short!();
+          i -= offset as usize;
         }
         Op::Return => break,
       };

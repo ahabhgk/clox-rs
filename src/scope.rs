@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 pub struct Scopes {
   scopes: Vec<Scope>,
-  count: usize,
+  count: u8,
 }
 
 impl Scopes {
@@ -19,7 +19,7 @@ impl Scopes {
 
   pub fn pop(&mut self) -> Option<Scope> {
     self.scopes.pop().map(|scope| {
-      self.count -= scope.len();
+      self.count -= scope.len() as u8;
       scope
     })
   }
@@ -70,11 +70,11 @@ impl Scopes {
 #[derive(Debug, Clone, Copy)]
 pub struct Local {
   pub is_init: bool,
-  pub index: usize,
+  pub index: u8,
 }
 
 impl Local {
-  pub fn new_uninit(index: usize) -> Self {
+  pub fn new_uninit(index: u8) -> Self {
     Self {
       is_init: false,
       index,
@@ -101,7 +101,7 @@ impl Scope {
     self.locals.contains_key(name)
   }
 
-  pub fn define(&mut self, name: String, index: usize) {
+  pub fn define(&mut self, name: String, index: u8) {
     let local = Local::new_uninit(index);
     self.locals.insert(name, local);
   }

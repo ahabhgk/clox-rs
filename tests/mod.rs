@@ -420,15 +420,15 @@ fn chapter_23_if_else() {
     r#"
 == Bytecodes ==
 0000 True
-0001 JumpIfFalse         1 -> 9
-0003 Pop
-0004 Constant            0 '"yes"'
-0006 Print
-0007 Jump                7 -> 13
-0009 Pop
-0010 Constant            1 '"no"'
-0012 Print
-0013 Return
+0001 JumpIfFalse         1 -> 11
+0004 Pop
+0005 Constant            0 '"yes"'
+0007 Print
+0008 Jump                8 -> 15
+0011 Pop
+0012 Constant            1 '"no"'
+0014 Print
+0015 Return
 
 "#,
     r#"
@@ -455,17 +455,17 @@ nil and "bad";
     r#"
 == Bytecodes ==
 0000 Nil
-0001 JumpIfFalse         1 -> 6
-0003 Pop
-0004 Constant            0 '"bad"'
-0006 Pop
-0007 Constant            1 '1'
-0009 JumpIfFalse         9 -> 13
-0011 Jump               11 -> 15
-0013 Pop
-0014 True
-0015 Pop
-0016 Return
+0001 JumpIfFalse         1 -> 7
+0004 Pop
+0005 Constant            0 '"bad"'
+0007 Pop
+0008 Constant            1 '1'
+0010 JumpIfFalse        10 -> 16
+0013 Jump               13 -> 18
+0016 Pop
+0017 True
+0018 Pop
+0019 Return
 
 "#,
     r#"
@@ -499,16 +499,16 @@ while (a < 3) {
 0004 GetGlobal           2 '"a"'
 0006 Constant            3 '3'
 0008 Less
-0009 JumpIfFalse         9 -> 22
-0011 Pop
-0012 GetGlobal           5 '"a"'
-0014 Constant            6 '1'
-0016 Add
-0017 SetGlobal           4 '"a"'
-0019 Pop
-0020 Loop               20 -> 4
-0022 Pop
-0023 Return
+0009 JumpIfFalse         9 -> 24
+0012 Pop
+0013 GetGlobal           5 '"a"'
+0015 Constant            6 '1'
+0017 Add
+0018 SetGlobal           4 '"a"'
+0020 Pop
+0021 Loop               21 -> 4
+0024 Pop
+0025 Return
 
 "#,
     r#"
@@ -569,21 +569,21 @@ fn chapter_23_for() {
 0002 GetLocal            0
 0004 Constant            1 '3'
 0006 Less
-0007 JumpIfFalse         7 -> 27
-0009 Pop
-0010 Jump               10 -> 22
-0012 GetLocal            0
-0014 Constant            2 '1'
-0016 Add
-0017 SetLocal            0
-0019 Pop
-0020 Loop               20 -> 2
-0022 GetLocal            0
-0024 Print
-0025 Loop               25 -> 12
-0027 Pop
-0028 Pop
-0029 Return
+0007 JumpIfFalse         7 -> 31
+0010 Pop
+0011 Jump               11 -> 25
+0014 GetLocal            0
+0016 Constant            2 '1'
+0018 Add
+0019 SetLocal            0
+0021 Pop
+0022 Loop               22 -> 2
+0025 GetLocal            0
+0027 Print
+0028 Loop               28 -> 14
+0031 Pop
+0032 Pop
+0033 Return
 
 "#,
     r#"

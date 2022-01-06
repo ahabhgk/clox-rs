@@ -93,35 +93,35 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     self.expression()?;
     self.eat(TokenType::RightParen, "Expect ')' after condition.")?;
 
-    let then_jump = self.chunk.emit_jump(Op::JumpIfFalse);
+    let then_jump = self.chunk.emit_jump(Op::JumpIfFalse)?;
     self.chunk.emit_op(Op::Pop);
     self.statement()?;
 
-    let else_jump = self.chunk.emit_jump(Op::Jump);
+    let else_jump = self.chunk.emit_jump(Op::Jump)?;
 
-    self.chunk.patch_jump(then_jump);
+    self.chunk.patch_jump(then_jump)?;
     self.chunk.emit_op(Op::Pop);
 
     if self.match_token(TokenType::Else) {
       self.statement()?;
     }
-    self.chunk.patch_jump(else_jump);
+    self.chunk.patch_jump(else_jump)?;
 
     Ok(())
   }
 
   fn while_statement(&mut self) -> Result<(), String> {
-    let loop_start = self.chunk.code_len();
+    let loop_start = self.chunk.code_len()?;
     self.eat(TokenType::LeftParen, "Expect '(' after 'while'.")?;
     self.expression()?;
     self.eat(TokenType::RightParen, "Expect ')' after condition.")?;
 
-    let exit_jump = self.chunk.emit_jump(Op::JumpIfFalse);
+    let exit_jump = self.chunk.emit_jump(Op::JumpIfFalse)?;
     self.chunk.emit_op(Op::Pop);
     self.statement()?;
-    self.chunk.emit_loop(loop_start);
+    self.chunk.emit_loop(loop_start)?;
 
-    self.chunk.patch_jump(exit_jump);
+    self.chunk.patch_jump(exit_jump)?;
     self.chunk.emit_op(Op::Pop);
 
     Ok(())
@@ -139,34 +139,34 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
       self.expression_statement()?;
     }
 
-    let mut loop_start = self.chunk.code_len();
+    let mut loop_start = self.chunk.code_len()?;
 
     let mut exit_jump = None;
     if !self.match_token(TokenType::Semicolon) {
       self.expression()?;
       self.eat(TokenType::Semicolon, "Expect ';' after loop condition.")?;
 
-      exit_jump = Some(self.chunk.emit_jump(Op::JumpIfFalse));
+      exit_jump = Some(self.chunk.emit_jump(Op::JumpIfFalse)?);
       self.chunk.emit_op(Op::Pop);
     }
 
     if !self.match_token(TokenType::RightParen) {
-      let body_jump = self.chunk.emit_jump(Op::Jump);
-      let increment_start = self.chunk.code_len();
+      let body_jump = self.chunk.emit_jump(Op::Jump)?;
+      let increment_start = self.chunk.code_len()?;
       self.expression()?;
       self.chunk.emit_op(Op::Pop);
       self.eat(TokenType::RightParen, "Expect ')' after for clauses.")?;
 
-      self.chunk.emit_loop(loop_start);
+      self.chunk.emit_loop(loop_start)?;
       loop_start = increment_start;
-      self.chunk.patch_jump(body_jump);
+      self.chunk.patch_jump(body_jump)?;
     }
 
     self.statement()?;
-    self.chunk.emit_loop(loop_start);
+    self.chunk.emit_loop(loop_start)?;
 
     if let Some(exit_jump) = exit_jump {
-      self.chunk.patch_jump(exit_jump);
+      self.chunk.patch_jump(exit_jump)?;
       self.chunk.emit_op(Op::Pop);
     }
 
@@ -219,7 +219,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     let name = &token.source;
 
     let global = if self.scopes.is_empty() {
-      let global = self.chunk.add_constant(Value::string(name));
+      let global = self.chunk.add_constant(Value::string(name))?;
       Some(global)
     } else {
       if self.scopes.current_has(name).unwrap() {
@@ -297,13 +297,13 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     match (is_set, local) {
       (true, None) => {
         let name = &token.source;
-        let global = self.chunk.add_constant(Value::string(name));
+        let global = self.chunk.add_constant(Value::string(name))?;
         self.expression()?;
         self.chunk.emit_set_global(global);
       }
       (false, None) => {
         let name = &token.source;
-        let global = self.chunk.add_constant(Value::string(name));
+        let global = self.chunk.add_constant(Value::string(name))?;
         self.chunk.emit_get_global(global);
       }
       (true, Some(local)) => {
@@ -337,7 +337,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
       .source
       .parse::<f64>()
       .map_err(|_e| "ParseFloatError".to_owned())?;
-    self.chunk.emit_constant(Value::number(constant));
+    self.chunk.emit_constant(Value::number(constant))?;
     Ok(())
   }
 
@@ -347,7 +347,7 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     _can_assign: bool,
   ) -> Result<(), String> {
     let string = &token.source[1..(token.length - 1)];
-    self.chunk.emit_constant(Value::string(string));
+    self.chunk.emit_constant(Value::string(string))?;
     Ok(())
   }
 
@@ -418,20 +418,20 @@ impl<'source, 'chunk> Parser<'source, 'chunk> {
     _token: Token,
     _can_assign: bool,
   ) -> Result<(), String> {
-    let end_jump = self.chunk.emit_jump(Op::JumpIfFalse);
+    let end_jump = self.chunk.emit_jump(Op::JumpIfFalse)?;
     self.chunk.emit_op(Op::Pop);
     self.parse_precedence(Precedence::And)?;
-    self.chunk.patch_jump(end_jump);
+    self.chunk.patch_jump(end_jump)?;
     Ok(())
   }
 
   pub fn or(&mut self, _token: Token, _can_assign: bool) -> Result<(), String> {
-    let else_jump = self.chunk.emit_jump(Op::JumpIfFalse);
-    let end_jump = self.chunk.emit_jump(Op::Jump);
-    self.chunk.patch_jump(else_jump);
+    let else_jump = self.chunk.emit_jump(Op::JumpIfFalse)?;
+    let end_jump = self.chunk.emit_jump(Op::Jump)?;
+    self.chunk.patch_jump(else_jump)?;
     self.chunk.emit_op(Op::Pop);
     self.parse_precedence(Precedence::Or)?;
-    self.chunk.patch_jump(end_jump);
+    self.chunk.patch_jump(end_jump)?;
     Ok(())
   }
 }

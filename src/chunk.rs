@@ -34,14 +34,14 @@ pub enum Op {
   Return,
 }
 
-impl From<Op> for usize {
+impl From<Op> for u8 {
   fn from(op: Op) -> Self {
-    op as usize
+    op as u8
   }
 }
 
-impl From<usize> for Op {
-  fn from(u: usize) -> Self {
+impl From<u8> for Op {
+  fn from(u: u8) -> Self {
     match u {
       0 => Self::Constant,
       1 => Self::Nil,
@@ -67,13 +67,13 @@ impl From<usize> for Op {
       21 => Self::JumpIfFalse,
       22 => Self::Loop,
       23 => Self::Return,
-      _ => unreachable!(),
+      _ => unreachable!("{:?}", u),
     }
   }
 }
 
 pub struct Chunk {
-  pub codes: Vec<usize>,
+  pub codes: Vec<u8>,
   pub constants: Vec<Value>,
 }
 
@@ -85,76 +85,106 @@ impl Chunk {
     }
   }
 
-  pub fn code_len(&self) -> usize {
-    self.codes.len()
+  pub fn code_len(&self) -> Result<u16, String> {
+    let len = self.codes.len();
+    if len > u16::MAX.into() {
+      return Err("Too much code...".to_owned());
+    }
+    Ok(len as u16)
   }
 
   pub fn emit_op(&mut self, op: Op) {
     self.push(op.into())
   }
 
-  pub fn emit_constant(&mut self, constant: Value) {
-    let index = self.add_constant(constant);
+  pub fn emit_constant(&mut self, constant: Value) -> Result<(), String> {
+    let index = self.add_constant(constant)?;
     self.emit_op(Op::Constant);
     self.push(index);
+    Ok(())
   }
 
-  pub fn emit_define_global(&mut self, index: usize) {
+  pub fn emit_define_global(&mut self, index: u8) {
     self.emit_op(Op::DefineGlobal);
     self.push(index);
   }
 
-  pub fn emit_get_global(&mut self, index: usize) {
+  pub fn emit_get_global(&mut self, index: u8) {
     self.emit_op(Op::GetGlobal);
     self.push(index);
   }
 
-  pub fn emit_set_global(&mut self, index: usize) {
+  pub fn emit_set_global(&mut self, index: u8) {
     self.emit_op(Op::SetGlobal);
     self.push(index);
   }
 
-  pub fn emit_get_local(&mut self, index: usize) {
+  pub fn emit_get_local(&mut self, index: u8) {
     self.emit_op(Op::GetLocal);
     self.push(index);
   }
 
-  pub fn emit_set_local(&mut self, index: usize) {
+  pub fn emit_set_local(&mut self, index: u8) {
     self.emit_op(Op::SetLocal);
     self.push(index);
   }
 
-  pub fn emit_jump(&mut self, op: Op) -> usize {
+  pub fn emit_jump(&mut self, op: Op) -> Result<u16, String> {
     self.emit_op(op);
     self.push(0xff);
-    self.codes.len() - 1
+    self.push(0xff);
+    let len = self.codes.len();
+    if len > u16::MAX.into() {
+      return Err("Too much code...".to_owned());
+    }
+    Ok(len as u16 - 2)
   }
 
-  pub fn patch_jump(&mut self, start: usize) {
-    let offset = self.codes.len() - 1 - start;
-    self.write(offset, start).unwrap();
+  pub fn patch_jump(&mut self, start: u16) -> Result<(), String> {
+    let len = self.codes.len();
+    if len > u16::MAX.into() {
+      return Err("Too much code to jump over.".to_owned());
+    }
+    let offset = len as u16 - 2 - start;
+    let offset = offset.to_ne_bytes();
+    self.write(offset[0], start)?;
+    self.write(offset[1], start + 1)?;
+    Ok(())
   }
 
-  pub fn emit_loop(&mut self, start: usize) {
-    let offset = self.codes.len() + 2 - start;
+  pub fn emit_loop(&mut self, start: u16) -> Result<(), String> {
     self.emit_op(Op::Loop);
-    self.push(offset);
+    let len = self.codes.len();
+    if len > u16::MAX.into() {
+      return Err("Loop body too large.".to_owned());
+    }
+    let offset = len as u16 + 2 - start;
+    let offset = offset.to_ne_bytes();
+    self.push(offset[0]);
+    self.push(offset[1]);
+    Ok(())
   }
 
-  fn push(&mut self, byte: usize) {
+  fn push(&mut self, byte: u8) {
     self.codes.push(byte);
   }
 
-  fn write(&mut self, byte: usize, at: usize) -> Result<(), String> {
-    let old = self.codes.get_mut(at).ok_or("The index is out of bound")?;
+  fn write(&mut self, byte: u8, at: u16) -> Result<(), String> {
+    let old = self
+      .codes
+      .get_mut(at as usize)
+      .ok_or("The index is out of bound")?;
     *old = byte;
     Ok(())
   }
 
-  pub fn add_constant(&mut self, constant: Value) -> usize {
+  pub fn add_constant(&mut self, constant: Value) -> Result<u8, String> {
     let index = self.constants.len();
+    if index > u8::MAX.into() {
+      return Err("Too many constants in one chunk.".to_owned());
+    }
     self.constants.push(constant);
-    index
+    Ok(index as u8)
   }
 
   fn debug_bytecodes(&self, prefix: &str) -> String {
@@ -202,13 +232,9 @@ impl Chunk {
     format!("{:?}\n", op)
   }
 
-  fn debug_double(
-    &self,
-    op: &Op,
-    codes: &mut Enumerate<Iter<usize>>,
-  ) -> String {
+  fn debug_double(&self, op: &Op, codes: &mut Enumerate<Iter<u8>>) -> String {
     let (_, &constant_index) = codes.next().unwrap();
-    let constant = self.constants.get(constant_index).unwrap();
+    let constant = self.constants.get(constant_index as usize).unwrap();
     format!(
       "{:16} {:4} '{:?}'\n",
       format!("{:?}", op),
@@ -217,7 +243,7 @@ impl Chunk {
     )
   }
 
-  fn debug_index(&self, op: &Op, codes: &mut Enumerate<Iter<usize>>) -> String {
+  fn debug_index(&self, op: &Op, codes: &mut Enumerate<Iter<u8>>) -> String {
     let (_, &index) = codes.next().unwrap();
     format!("{:16} {:4}\n", format!("{:?}", op), index)
   }
@@ -227,13 +253,15 @@ impl Chunk {
     op: &Op,
     from: usize,
     is_forward: bool,
-    codes: &mut Enumerate<Iter<usize>>,
+    codes: &mut Enumerate<Iter<u8>>,
   ) -> String {
-    let (index, &offset) = codes.next().unwrap();
+    let (_, &offset_0) = codes.next().unwrap();
+    let (_, &offset_1) = codes.next().unwrap();
+    let offset = unsafe { *[offset_0, offset_1].as_ptr().cast::<u16>() };
     let to = if is_forward {
-      index + 1 + offset
+      from + 3 + offset as usize
     } else {
-      index + 1 - offset
+      from + 3 - offset as usize
     };
     format!("{:16} {:4} -> {}\n", format!("{:?}", op), from, to)
   }
