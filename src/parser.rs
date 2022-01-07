@@ -1,24 +1,25 @@
 use crate::{
-  chunk::{Chunk, Op},
+  chunk::Op,
   compiler::Compiler,
   scanner::Scanner,
   token::{Precedence, Token, TokenType},
-  value::Value,
+  value::{Function, Value},
+  Chunk,
 };
 
-pub fn compile(source: &str) -> Result<Chunk, String> {
+pub fn compile(source: &str) -> Result<Function, String> {
   let scanner = Scanner::new(source);
   let mut parser = Parser::new(scanner);
   parser.advance()?; // TODO
   parser.program()?;
-  let chunk = parser.end();
-  Ok(chunk)
+  let function = parser.end_compiler();
+  Ok(function)
 }
 
 pub struct Parser<'source> {
   peek: Option<Token>,
   scanner: Scanner<'source>,
-  compiler: Compiler,
+  compiler: Option<Compiler>,
 }
 
 pub type ParseFn<'s> = fn(&mut Parser<'s>, Token, bool) -> Result<(), String>;
@@ -28,13 +29,26 @@ impl<'source> Parser<'source> {
     Self {
       peek: None,
       scanner,
-      compiler: Compiler::new(),
+      compiler: Some(Compiler::new()),
     }
   }
 
-  pub fn end(mut self) -> Chunk {
-    self.compiler.chunk.emit_op(Op::Return);
-    self.compiler.chunk
+  pub fn end_compiler(&mut self) -> Function {
+    self.emitter().emit_op(Op::Return);
+    let (compiler, function) = self.compiler.take().unwrap().end();
+    self.compiler = compiler;
+    function
+  }
+
+  fn get_compiler_mut(&mut self) -> &mut Compiler {
+    self
+      .compiler
+      .as_mut()
+      .expect("use compiler before end_compiler")
+  }
+
+  fn emitter(&mut self) -> &mut Chunk {
+    self.get_compiler_mut().chunk()
   }
 
   pub fn advance(&mut self) -> Result<Option<Token>, String> {
@@ -74,14 +88,14 @@ impl<'source> Parser<'source> {
   fn print_statement(&mut self) -> Result<(), String> {
     self.expression()?;
     self.eat(TokenType::Semicolon, "Expect ';' after value.")?;
-    self.compiler.chunk.emit_op(Op::Print);
+    self.emitter().emit_op(Op::Print);
     Ok(())
   }
 
   fn expression_statement(&mut self) -> Result<(), String> {
     self.expression()?;
     self.eat(TokenType::Semicolon, "Expect ';' after expression.")?;
-    self.compiler.chunk.emit_op(Op::Pop);
+    self.emitter().emit_op(Op::Pop);
     Ok(())
   }
 
@@ -90,36 +104,36 @@ impl<'source> Parser<'source> {
     self.expression()?;
     self.eat(TokenType::RightParen, "Expect ')' after condition.")?;
 
-    let then_jump = self.compiler.chunk.emit_jump(Op::JumpIfFalse)?;
-    self.compiler.chunk.emit_op(Op::Pop);
+    let then_jump = self.emitter().emit_jump(Op::JumpIfFalse)?;
+    self.emitter().emit_op(Op::Pop);
     self.statement()?;
 
-    let else_jump = self.compiler.chunk.emit_jump(Op::Jump)?;
+    let else_jump = self.emitter().emit_jump(Op::Jump)?;
 
-    self.compiler.chunk.patch_jump(then_jump)?;
-    self.compiler.chunk.emit_op(Op::Pop);
+    self.emitter().patch_jump(then_jump)?;
+    self.emitter().emit_op(Op::Pop);
 
     if self.match_token(TokenType::Else) {
       self.statement()?;
     }
-    self.compiler.chunk.patch_jump(else_jump)?;
+    self.emitter().patch_jump(else_jump)?;
 
     Ok(())
   }
 
   fn while_statement(&mut self) -> Result<(), String> {
-    let loop_start = self.compiler.chunk.code_len()?;
+    let loop_start = self.emitter().code_len()?;
     self.eat(TokenType::LeftParen, "Expect '(' after 'while'.")?;
     self.expression()?;
     self.eat(TokenType::RightParen, "Expect ')' after condition.")?;
 
-    let exit_jump = self.compiler.chunk.emit_jump(Op::JumpIfFalse)?;
-    self.compiler.chunk.emit_op(Op::Pop);
+    let exit_jump = self.emitter().emit_jump(Op::JumpIfFalse)?;
+    self.emitter().emit_op(Op::Pop);
     self.statement()?;
-    self.compiler.chunk.emit_loop(loop_start)?;
+    self.emitter().emit_loop(loop_start)?;
 
-    self.compiler.chunk.patch_jump(exit_jump)?;
-    self.compiler.chunk.emit_op(Op::Pop);
+    self.emitter().patch_jump(exit_jump)?;
+    self.emitter().emit_op(Op::Pop);
 
     Ok(())
   }
@@ -136,35 +150,35 @@ impl<'source> Parser<'source> {
       self.expression_statement()?;
     }
 
-    let mut loop_start = self.compiler.chunk.code_len()?;
+    let mut loop_start = self.emitter().code_len()?;
 
     let mut exit_jump = None;
     if !self.match_token(TokenType::Semicolon) {
       self.expression()?;
       self.eat(TokenType::Semicolon, "Expect ';' after loop condition.")?;
 
-      exit_jump = Some(self.compiler.chunk.emit_jump(Op::JumpIfFalse)?);
-      self.compiler.chunk.emit_op(Op::Pop);
+      exit_jump = Some(self.emitter().emit_jump(Op::JumpIfFalse)?);
+      self.emitter().emit_op(Op::Pop);
     }
 
     if !self.match_token(TokenType::RightParen) {
-      let body_jump = self.compiler.chunk.emit_jump(Op::Jump)?;
-      let increment_start = self.compiler.chunk.code_len()?;
+      let body_jump = self.emitter().emit_jump(Op::Jump)?;
+      let increment_start = self.emitter().code_len()?;
       self.expression()?;
-      self.compiler.chunk.emit_op(Op::Pop);
+      self.emitter().emit_op(Op::Pop);
       self.eat(TokenType::RightParen, "Expect ')' after for clauses.")?;
 
-      self.compiler.chunk.emit_loop(loop_start)?;
+      self.emitter().emit_loop(loop_start)?;
       loop_start = increment_start;
-      self.compiler.chunk.patch_jump(body_jump)?;
+      self.emitter().patch_jump(body_jump)?;
     }
 
     self.statement()?;
-    self.compiler.chunk.emit_loop(loop_start)?;
+    self.emitter().emit_loop(loop_start)?;
 
     if let Some(exit_jump) = exit_jump {
-      self.compiler.chunk.patch_jump(exit_jump)?;
-      self.compiler.chunk.emit_op(Op::Pop);
+      self.emitter().patch_jump(exit_jump)?;
+      self.emitter().emit_op(Op::Pop);
     }
 
     self.end_scope();
@@ -172,14 +186,15 @@ impl<'source> Parser<'source> {
   }
 
   fn begin_scope(&mut self) {
-    self.compiler.scopes.push();
+    self.get_compiler_mut().scopes.push();
   }
 
   fn end_scope(&mut self) {
-    let scope = self.compiler.scopes.pop().unwrap();
+    let compiler = self.get_compiler_mut();
+    let scope = compiler.scopes.pop().unwrap();
 
     for _ in 0..scope.len() {
-      self.compiler.chunk.emit_op(Op::Pop);
+      compiler.chunk().emit_op(Op::Pop);
     }
   }
 
@@ -215,16 +230,19 @@ impl<'source> Parser<'source> {
     let token = self.eat(TokenType::Identifier, "Expect variable name.")?;
     let name = &token.source;
 
-    let global = if self.compiler.scopes.is_empty() {
-      let global = self.compiler.chunk.add_constant(Value::string(name))?;
+    let global = if self.get_compiler_mut().scopes.is_empty() {
+      let global = self.emitter().add_constant(Value::string(name))?;
       Some(global)
     } else {
-      if self.compiler.scopes.current_has(name).unwrap() {
+      if self.get_compiler_mut().scopes.current_has(name).unwrap() {
         return Err(
           "Already a variable with this name in this scope.".to_owned(),
         );
       } else {
-        self.compiler.scopes.define_uninit_local(name.to_owned())?;
+        self
+          .get_compiler_mut()
+          .scopes
+          .define_uninit_local(name.to_owned())?;
         None
       }
     };
@@ -232,7 +250,7 @@ impl<'source> Parser<'source> {
     if self.match_token(TokenType::Equal) {
       self.expression()?;
     } else {
-      self.compiler.chunk.emit_op(Op::Nil);
+      self.emitter().emit_op(Op::Nil);
     }
     self.eat(
       TokenType::Semicolon,
@@ -240,8 +258,8 @@ impl<'source> Parser<'source> {
     )?;
 
     match global {
-      Some(global) => self.compiler.chunk.emit_define_global(global),
-      None => self.compiler.scopes.mark_init_local(name),
+      Some(global) => self.emitter().emit_define_global(global),
+      None => self.get_compiler_mut().scopes.mark_init_local(name),
     }
     Ok(())
   }
@@ -290,26 +308,27 @@ impl<'source> Parser<'source> {
   ) -> Result<(), String> {
     let is_set = can_assign && self.match_token(TokenType::Equal);
     let name = &token.source;
-    let local = self.compiler.scopes.resolve_local(name)?;
+    let local = self.get_compiler_mut().scopes.resolve_local(name)?;
     match (is_set, local) {
       (true, None) => {
         let name = &token.source;
-        let global = self.compiler.chunk.add_constant(Value::string(name))?;
+        let global = self.emitter().add_constant(Value::string(name))?;
         self.expression()?;
-        self.compiler.chunk.emit_set_global(global);
+        self.emitter().emit_set_global(global);
       }
       (false, None) => {
         let name = &token.source;
-        let global = self.compiler.chunk.add_constant(Value::string(name))?;
-        self.compiler.chunk.emit_get_global(global);
+        let global = self.emitter().add_constant(Value::string(name))?;
+        self.emitter().emit_get_global(global);
       }
       (true, Some(local)) => {
         let index = local.index;
         self.expression()?;
-        self.compiler.chunk.emit_set_local(index);
+        self.emitter().emit_set_local(index);
       }
       (false, Some(local)) => {
-        self.compiler.chunk.emit_get_local(local.index);
+        let index = local.index;
+        self.emitter().emit_get_local(index);
       }
     }
     Ok(())
@@ -334,7 +353,7 @@ impl<'source> Parser<'source> {
       .source
       .parse::<f64>()
       .map_err(|_e| "ParseFloatError".to_owned())?;
-    self.compiler.chunk.emit_constant(Value::number(constant))?;
+    self.emitter().emit_constant(Value::number(constant))?;
     Ok(())
   }
 
@@ -344,7 +363,7 @@ impl<'source> Parser<'source> {
     _can_assign: bool,
   ) -> Result<(), String> {
     let string = &token.source[1..(token.length - 1)];
-    self.compiler.chunk.emit_constant(Value::string(string))?;
+    self.emitter().emit_constant(Value::string(string))?;
     Ok(())
   }
 
@@ -354,9 +373,9 @@ impl<'source> Parser<'source> {
     _can_assign: bool,
   ) -> Result<(), String> {
     match token.token_type {
-      TokenType::Nil => self.compiler.chunk.emit_op(Op::Nil),
-      TokenType::False => self.compiler.chunk.emit_op(Op::False),
-      TokenType::True => self.compiler.chunk.emit_op(Op::True),
+      TokenType::Nil => self.emitter().emit_op(Op::Nil),
+      TokenType::False => self.emitter().emit_op(Op::False),
+      TokenType::True => self.emitter().emit_op(Op::True),
       _ => unreachable!(),
     }
     Ok(())
@@ -370,8 +389,8 @@ impl<'source> Parser<'source> {
     self.parse_precedence(Precedence::Unary)?;
 
     match token.token_type {
-      TokenType::Bang => self.compiler.chunk.emit_op(Op::Not),
-      TokenType::Minus => self.compiler.chunk.emit_op(Op::Negate),
+      TokenType::Bang => self.emitter().emit_op(Op::Not),
+      TokenType::Minus => self.emitter().emit_op(Op::Negate),
       _ => unreachable!(),
     }
     Ok(())
@@ -387,24 +406,24 @@ impl<'source> Parser<'source> {
 
     match token.token_type {
       TokenType::BangEqual => {
-        self.compiler.chunk.emit_op(Op::Equal);
-        self.compiler.chunk.emit_op(Op::Not);
+        self.emitter().emit_op(Op::Equal);
+        self.emitter().emit_op(Op::Not);
       }
-      TokenType::EqualEqual => self.compiler.chunk.emit_op(Op::Equal),
-      TokenType::Greater => self.compiler.chunk.emit_op(Op::Greater),
+      TokenType::EqualEqual => self.emitter().emit_op(Op::Equal),
+      TokenType::Greater => self.emitter().emit_op(Op::Greater),
       TokenType::GreaterEqual => {
-        self.compiler.chunk.emit_op(Op::Less);
-        self.compiler.chunk.emit_op(Op::Not);
+        self.emitter().emit_op(Op::Less);
+        self.emitter().emit_op(Op::Not);
       }
-      TokenType::Less => self.compiler.chunk.emit_op(Op::Less),
+      TokenType::Less => self.emitter().emit_op(Op::Less),
       TokenType::LessEqual => {
-        self.compiler.chunk.emit_op(Op::Greater);
-        self.compiler.chunk.emit_op(Op::Not);
+        self.emitter().emit_op(Op::Greater);
+        self.emitter().emit_op(Op::Not);
       }
-      TokenType::Plus => self.compiler.chunk.emit_op(Op::Add),
-      TokenType::Minus => self.compiler.chunk.emit_op(Op::Subtract),
-      TokenType::Star => self.compiler.chunk.emit_op(Op::Multiply),
-      TokenType::Slash => self.compiler.chunk.emit_op(Op::Divide),
+      TokenType::Plus => self.emitter().emit_op(Op::Add),
+      TokenType::Minus => self.emitter().emit_op(Op::Subtract),
+      TokenType::Star => self.emitter().emit_op(Op::Multiply),
+      TokenType::Slash => self.emitter().emit_op(Op::Divide),
       _ => unreachable!(),
     }
     Ok(())
@@ -415,20 +434,20 @@ impl<'source> Parser<'source> {
     _token: Token,
     _can_assign: bool,
   ) -> Result<(), String> {
-    let end_jump = self.compiler.chunk.emit_jump(Op::JumpIfFalse)?;
-    self.compiler.chunk.emit_op(Op::Pop);
+    let end_jump = self.emitter().emit_jump(Op::JumpIfFalse)?;
+    self.emitter().emit_op(Op::Pop);
     self.parse_precedence(Precedence::And)?;
-    self.compiler.chunk.patch_jump(end_jump)?;
+    self.emitter().patch_jump(end_jump)?;
     Ok(())
   }
 
   pub fn or(&mut self, _token: Token, _can_assign: bool) -> Result<(), String> {
-    let else_jump = self.compiler.chunk.emit_jump(Op::JumpIfFalse)?;
-    let end_jump = self.compiler.chunk.emit_jump(Op::Jump)?;
-    self.compiler.chunk.patch_jump(else_jump)?;
-    self.compiler.chunk.emit_op(Op::Pop);
+    let else_jump = self.emitter().emit_jump(Op::JumpIfFalse)?;
+    let end_jump = self.emitter().emit_jump(Op::Jump)?;
+    self.emitter().patch_jump(else_jump)?;
+    self.emitter().emit_op(Op::Pop);
     self.parse_precedence(Precedence::Or)?;
-    self.compiler.chunk.patch_jump(end_jump)?;
+    self.emitter().patch_jump(end_jump)?;
     Ok(())
   }
 }

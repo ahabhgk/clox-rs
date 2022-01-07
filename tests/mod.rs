@@ -13,9 +13,9 @@ macro_rules! assert_snapshot {
     let mut parser = Parser::new(scanner);
     parser.advance().unwrap();
     parser.program().unwrap();
-    let chunk = parser.end();
-    check(&chunk, expect![[$bytecodes]]);
-    let mut vm = VM::new(chunk);
+    let f = parser.end_compiler();
+    check(&f.chunk, expect![[$bytecodes]]);
+    let mut vm = VM::from_function(f);
     let inspector = vm.inspect().unwrap();
     check(&inspector, expect![[$stack_snapshot]])
   };
@@ -25,8 +25,8 @@ macro_rules! assert_snapshot {
       let mut parser = Parser::new(scanner);
       parser.advance()?;
       parser.program()?;
-      let chunk = parser.end();
-      let mut vm = VM::new(chunk);
+      let f = parser.end_compiler();
+      let mut vm = VM::from_function(f);
       let _ = vm.inspect()?;
       Ok(())
     }
@@ -55,17 +55,17 @@ fn chapter_17() {
 ",
     "
 == VM Stack Snapshot ==
-[]
-[1]
-[-1]
-[-1, 2]
-[1]
-[1, 3]
-[3]
-[3, 4]
-[3, -4]
-[7]
-[]
+[<script>]
+[<script>, 1]
+[<script>, -1]
+[<script>, -1, 2]
+[<script>, 1]
+[<script>, 1, 3]
+[<script>, 3]
+[<script>, 3, 4]
+[<script>, 3, -4]
+[<script>, 7]
+[<script>]
 
 "
   );
@@ -94,19 +94,19 @@ fn chapter_18() {
 ",
     "
 == VM Stack Snapshot ==
-[]
-[5]
-[5, 4]
-[1]
-[1, 3]
-[1, 3, 2]
-[1, 6]
-[false]
-[false, nil]
-[false, true]
-[false]
-[true]
-[]
+[<script>]
+[<script>, 5]
+[<script>, 5, 4]
+[<script>, 1]
+[<script>, 1, 3]
+[<script>, 1, 3, 2]
+[<script>, 1, 6]
+[<script>, false]
+[<script>, false, nil]
+[<script>, false, true]
+[<script>, false]
+[<script>, true]
+[<script>]
 
 "
   );
@@ -127,11 +127,11 @@ fn chapter_19() {
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-["aha"]
-["aha", "b"]
-["ahab"]
-[]
+[<script>]
+[<script>, "aha"]
+[<script>, "aha", "b"]
+[<script>, "ahab"]
+[<script>]
 
 "#
   );
@@ -159,15 +159,15 @@ print 3 * 4;
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-[1]
-[1, 2]
-[3]
-[]
-[3]
-[3, 4]
-[12]
-[]
+[<script>]
+[<script>, 1]
+[<script>, 1, 2]
+[<script>, 3]
+[<script>]
+[<script>, 3]
+[<script>, 3, 4]
+[<script>, 12]
+[<script>]
 
 "#
   );
@@ -186,9 +186,9 @@ fn chapter_21_global_uninit() {
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-[nil]
-[]
+[<script>]
+[<script>, nil]
+[<script>]
 
 "#
   );
@@ -206,9 +206,9 @@ fn chapter_21_global_init() {
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-[0]
-[]
+[<script>]
+[<script>, 0]
+[<script>]
 
 "#
   );
@@ -242,18 +242,18 @@ print a;
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-["aaa"]
-[]
-["bbb"]
-[]
-["assign add "]
-["assign add ", "bbb"]
-["assign add bbb"]
-["assign add bbb"]
-[]
-["assign add bbb"]
-[]
+[<script>]
+[<script>, "aaa"]
+[<script>]
+[<script>, "bbb"]
+[<script>]
+[<script>, "assign add "]
+[<script>, "assign add ", "bbb"]
+[<script>, "assign add bbb"]
+[<script>, "assign add bbb"]
+[<script>]
+[<script>, "assign add bbb"]
+[<script>]
 
 "#
   );
@@ -284,15 +284,15 @@ fn chapter_22_local() {
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-["first"]
-["first", "second"]
-["first", "second", "first"]
-["first", "second", "first", "second"]
-["first", "second", "firstsecond"]
-["first", "second"]
-["first"]
-[]
+[<script>]
+[<script>, "first"]
+[<script>, "first", "second"]
+[<script>, "first", "second", "first"]
+[<script>, "first", "second", "first", "second"]
+[<script>, "first", "second", "firstsecond"]
+[<script>, "first", "second"]
+[<script>, "first"]
+[<script>]
 
 "#
   );
@@ -375,37 +375,37 @@ fn chapter_22() {
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-[1]
-[1, 2]
-[1, 2, 3]
-[1, 2, 3, 4]
-[1, 2, 3, 4, 1]
-[1, 2, 3, 4, 1, 2]
-[1, 2, 3, 4, 3]
-[1, 2, 3, 4, 3, 3]
-[1, 2, 3, 4, 6]
-[1, 2, 3, 4, 6, 4]
-[1, 2, 3, 4, 10]
-[1, 2, 3, 4]
-[1, 2, 3]
-[1, 2, 3, 5]
-[1, 2, 3, 5, 1]
-[1, 2, 3, 5, 1, 5]
-[1, 2, 3, 5, 6]
-[1, 2, 3, 5]
-[1, 2, 3]
-[1, 2]
-[1]
-[1, 6]
-[1, 6, 7]
-[1, 6, 7, 6]
-[1, 6, 7, 6, 7]
-[1, 6, 7, 13]
-[1, 6, 7]
-[1, 6]
-[1]
-[]
+[<script>]
+[<script>, 1]
+[<script>, 1, 2]
+[<script>, 1, 2, 3]
+[<script>, 1, 2, 3, 4]
+[<script>, 1, 2, 3, 4, 1]
+[<script>, 1, 2, 3, 4, 1, 2]
+[<script>, 1, 2, 3, 4, 3]
+[<script>, 1, 2, 3, 4, 3, 3]
+[<script>, 1, 2, 3, 4, 6]
+[<script>, 1, 2, 3, 4, 6, 4]
+[<script>, 1, 2, 3, 4, 10]
+[<script>, 1, 2, 3, 4]
+[<script>, 1, 2, 3]
+[<script>, 1, 2, 3, 5]
+[<script>, 1, 2, 3, 5, 1]
+[<script>, 1, 2, 3, 5, 1, 5]
+[<script>, 1, 2, 3, 5, 6]
+[<script>, 1, 2, 3, 5]
+[<script>, 1, 2, 3]
+[<script>, 1, 2]
+[<script>, 1]
+[<script>, 1, 6]
+[<script>, 1, 6, 7]
+[<script>, 1, 6, 7, 6]
+[<script>, 1, 6, 7, 6, 7]
+[<script>, 1, 6, 7, 13]
+[<script>, 1, 6, 7]
+[<script>, 1, 6]
+[<script>, 1]
+[<script>]
 
 "#
   );
@@ -431,13 +431,13 @@ fn chapter_23_if_else() {
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-[true]
-[true]
-[]
-["yes"]
-[]
-[]
+[<script>]
+[<script>, true]
+[<script>, true]
+[<script>]
+[<script>, "yes"]
+[<script>]
+[<script>]
 
 "#
   );
@@ -468,14 +468,14 @@ nil and "bad";
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-[nil]
-[nil]
-[]
-[1]
-[1]
-[1]
-[]
+[<script>]
+[<script>, nil]
+[<script>, nil]
+[<script>]
+[<script>, 1]
+[<script>, 1]
+[<script>, 1]
+[<script>]
 
 "#
   );
@@ -511,47 +511,47 @@ while (a < 3) {
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-[0]
-[]
-[0]
-[0, 3]
-[true]
-[true]
-[]
-[0]
-[0, 1]
-[1]
-[1]
-[]
-[]
-[1]
-[1, 3]
-[true]
-[true]
-[]
-[1]
-[1, 1]
-[2]
-[2]
-[]
-[]
-[2]
-[2, 3]
-[true]
-[true]
-[]
-[2]
-[2, 1]
-[3]
-[3]
-[]
-[]
-[3]
-[3, 3]
-[false]
-[false]
-[]
+[<script>]
+[<script>, 0]
+[<script>]
+[<script>, 0]
+[<script>, 0, 3]
+[<script>, true]
+[<script>, true]
+[<script>]
+[<script>, 0]
+[<script>, 0, 1]
+[<script>, 1]
+[<script>, 1]
+[<script>]
+[<script>]
+[<script>, 1]
+[<script>, 1, 3]
+[<script>, true]
+[<script>, true]
+[<script>]
+[<script>, 1]
+[<script>, 1, 1]
+[<script>, 2]
+[<script>, 2]
+[<script>]
+[<script>]
+[<script>, 2]
+[<script>, 2, 3]
+[<script>, true]
+[<script>, true]
+[<script>]
+[<script>, 2]
+[<script>, 2, 1]
+[<script>, 3]
+[<script>, 3]
+[<script>]
+[<script>]
+[<script>, 3]
+[<script>, 3, 3]
+[<script>, false]
+[<script>, false]
+[<script>]
 
 "#
   );
@@ -586,59 +586,59 @@ fn chapter_23_for() {
 "#,
     r#"
 == VM Stack Snapshot ==
-[]
-[0]
-[0, 0]
-[0, 0, 3]
-[0, true]
-[0, true]
-[0]
-[0]
-[0, 0]
-[0]
-[0]
-[0, 0]
-[0, 0, 1]
-[0, 1]
-[1, 1]
-[1]
-[1]
-[1, 1]
-[1, 1, 3]
-[1, true]
-[1, true]
-[1]
-[1]
-[1, 1]
-[1]
-[1]
-[1, 1]
-[1, 1, 1]
-[1, 2]
-[2, 2]
-[2]
-[2]
-[2, 2]
-[2, 2, 3]
-[2, true]
-[2, true]
-[2]
-[2]
-[2, 2]
-[2]
-[2]
-[2, 2]
-[2, 2, 1]
-[2, 3]
-[3, 3]
-[3]
-[3]
-[3, 3]
-[3, 3, 3]
-[3, false]
-[3, false]
-[3]
-[]
+[<script>]
+[<script>, 0]
+[<script>, 0, 0]
+[<script>, 0, 0, 3]
+[<script>, 0, true]
+[<script>, 0, true]
+[<script>, 0]
+[<script>, 0]
+[<script>, 0, 0]
+[<script>, 0]
+[<script>, 0]
+[<script>, 0, 0]
+[<script>, 0, 0, 1]
+[<script>, 0, 1]
+[<script>, 1, 1]
+[<script>, 1]
+[<script>, 1]
+[<script>, 1, 1]
+[<script>, 1, 1, 3]
+[<script>, 1, true]
+[<script>, 1, true]
+[<script>, 1]
+[<script>, 1]
+[<script>, 1, 1]
+[<script>, 1]
+[<script>, 1]
+[<script>, 1, 1]
+[<script>, 1, 1, 1]
+[<script>, 1, 2]
+[<script>, 2, 2]
+[<script>, 2]
+[<script>, 2]
+[<script>, 2, 2]
+[<script>, 2, 2, 3]
+[<script>, 2, true]
+[<script>, 2, true]
+[<script>, 2]
+[<script>, 2]
+[<script>, 2, 2]
+[<script>, 2]
+[<script>, 2]
+[<script>, 2, 2]
+[<script>, 2, 2, 1]
+[<script>, 2, 3]
+[<script>, 3, 3]
+[<script>, 3]
+[<script>, 3]
+[<script>, 3, 3]
+[<script>, 3, 3, 3]
+[<script>, 3, false]
+[<script>, 3, false]
+[<script>, 3]
+[<script>]
 
 "#
   );

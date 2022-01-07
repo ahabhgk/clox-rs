@@ -1,53 +1,99 @@
 use std::{collections::HashMap, fmt};
 
-use crate::{chunk::Op, parser::compile, value::Value, Chunk};
+use crate::{
+  chunk::Op,
+  parser::compile,
+  value::{Function, Value},
+};
 
 pub fn interpret(source: &str) -> Result<(), String> {
-  let chunk = compile(source)?;
-  let mut vm = VM::new(chunk);
+  let function = compile(source)?;
+  let mut vm = VM::from_function(function);
   vm.inspect()?;
   Ok(())
 }
 
+pub struct CallFrame {
+  function: Function,
+  index: u16,
+  start: u8,
+}
+
+impl CallFrame {
+  pub fn new(function: Function, start: u8) -> Self {
+    Self {
+      function,
+      index: 0,
+      start,
+    }
+  }
+
+  pub fn start(&self) -> u8 {
+    self.start
+  }
+
+  pub fn step_ahead(&mut self, n: u16) {
+    self.index += n;
+  }
+
+  pub fn step_back(&mut self, n: u16) {
+    self.index -= n;
+  }
+
+  pub fn read_byte(&mut self) -> u8 {
+    let byte = self.function.chunk.codes.get(self.index as usize).unwrap();
+    self.index += 1;
+    *byte
+  }
+
+  pub fn read_short(&mut self) -> u16 {
+    let offset_0 = self.read_byte();
+    let offset_1 = self.read_byte();
+    unsafe { *[offset_0, offset_1].as_ptr().cast::<u16>() }
+  }
+
+  pub fn read_constant(&mut self) -> Value {
+    let i = self.read_byte() as usize;
+    self.function.chunk.constants.get(i).unwrap().clone()
+  }
+
+  pub fn get_local(&mut self, stack: &Vec<Value>) -> Value {
+    let index = self.start() + self.read_byte();
+    stack.get(index as usize).unwrap().clone()
+  }
+
+  pub fn set_local(&mut self, stack: &mut Vec<Value>, value: Value) {
+    let index = self.start() + self.read_byte();
+    let old = stack.get_mut(index as usize).unwrap();
+    *old = value;
+  }
+}
+
 pub struct VM {
+  frames: Vec<CallFrame>,
   stack: Vec<Value>,
-  codes: Vec<u8>,
-  constants: Vec<Value>,
   globals: HashMap<String, Value>,
 }
 
 impl VM {
-  pub fn new(chunk: Chunk) -> Self {
+  pub fn new() -> Self {
     Self {
+      frames: Vec::new(),
       stack: Vec::new(),
-      codes: chunk.codes,
-      constants: chunk.constants,
       globals: HashMap::new(),
     }
   }
 
+  pub fn from_function(function: Function) -> Self {
+    let mut vm = Self::new();
+    vm.stack.push(Value::Function(function.clone()));
+    let frame = CallFrame::new(function, vm.stack.len() as u8);
+    vm.frames.push(frame);
+    vm
+  }
+
   pub fn inspect(&mut self) -> Result<Inspector, String> {
-    let mut i = 0;
-    macro_rules! read_byte {
-      () => {{
-        let code = *self.codes.get(i).unwrap();
-        i += 1;
-        code
-      }};
-    }
-    macro_rules! read_short {
-      () => {{
-        let offset_0 = read_byte!();
-        let offset_1 = read_byte!();
-        unsafe { *[offset_0, offset_1].as_ptr().cast::<u16>() }
-      }};
-    }
-    macro_rules! read_constant {
-      () => {{
-        let constant_index = read_byte!();
-        self.constants.get(constant_index as usize).unwrap().clone()
-      }};
-    }
+    let frame = self.frames.last_mut().unwrap();
     macro_rules! push {
       ($v:expr) => {
         self.stack.push($v)
@@ -71,11 +117,11 @@ impl VM {
     loop {
       inspector.stack_snapshot.push(self.stack.clone());
 
-      let code = read_byte!();
+      let code = frame.read_byte();
       let op = Op::from(code);
       match op {
         Op::Constant => {
-          let constant = read_constant!();
+          let constant = frame.read_constant();
           push!(constant);
         }
         Op::Nil => push!(Value::nil()),
@@ -85,29 +131,27 @@ impl VM {
           pop!();
         }
         Op::GetLocal => {
-          let index = read_byte!();
-          let value = self.stack.get(index as usize).unwrap().clone();
+          let value = frame.get_local(&self.stack);
+          dbg!(&value);
           push!(value);
         }
         Op::SetLocal => {
-          let index = read_byte!();
-          let new_value = peek!(0).clone();
-          let old_value = self.stack.get_mut(index as usize).unwrap();
-          *old_value = new_value;
+          let value = peek!(0).clone();
+          frame.set_local(&mut self.stack, value);
         }
         Op::GetGlobal => {
-          let name = read_constant!();
+          let name = frame.read_constant();
           let name = name.as_string().unwrap();
           let value =
             self.globals.get(name).ok_or("Undefined variable.")?.clone();
           push!(value);
         }
         Op::DefineGlobal => {
-          let name = read_constant!().as_string().unwrap().to_owned();
+          let name = frame.read_constant().as_string().unwrap().to_owned();
           self.globals.insert(name, pop!());
         }
         Op::SetGlobal => {
-          let name = read_constant!().as_string().unwrap().to_owned();
+          let name = frame.read_constant().as_string().unwrap().to_owned();
           self
             .globals
             .insert(name, peek!(0).clone())
@@ -171,22 +215,18 @@ impl VM {
         }
         Op::Print => println!("{:?}", pop!()),
         Op::Jump => {
-          let jump_offset = read_short!();
-          for _ in 0..jump_offset {
-            read_byte!();
-          }
+          let jump_offset = frame.read_short();
+          frame.step_ahead(jump_offset);
         }
         Op::JumpIfFalse => {
-          let jump_offset = read_short!();
+          let jump_offset = frame.read_short();
           if peek!(0).is_falsey() {
-            for _ in 0..jump_offset {
-              read_byte!();
-            }
+            frame.step_ahead(jump_offset);
           }
         }
         Op::Loop => {
-          let offset = read_short!();
-          i -= offset as usize;
+          let offset = frame.read_short();
+          frame.step_back(offset);
         }
         Op::Return => break,
       };
