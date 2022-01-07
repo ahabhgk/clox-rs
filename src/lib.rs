@@ -6,6 +6,7 @@ mod token;
 mod value;
 mod vm;
 mod scope;
+mod compiler;
 
 pub use chunk::Chunk;
 pub use parser::Parser;

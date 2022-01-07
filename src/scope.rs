@@ -37,9 +37,12 @@ impl Scopes {
     let scope = self
       .scopes
       .last_mut()
-      .ok_or("Can't define a local variable without scope.".to_owned())?;
+      .ok_or("Can't define a local variable without scope.")?;
     scope.define(name, index);
-    self.count += 1;
+    self.count = self
+      .count
+      .checked_add(1)
+      .ok_or("Too many local variables in function.")?;
     Ok(())
   }
 

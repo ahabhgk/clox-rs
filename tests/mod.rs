@@ -1,6 +1,6 @@
 use std::fmt;
 
-use clox_rs::{Chunk, Parser, Scanner, VM};
+use clox_rs::{Parser, Scanner, VM};
 use expect_test::{expect, Expect};
 
 fn check(actual: &impl fmt::Debug, expect: Expect) {
@@ -10,11 +10,10 @@ fn check(actual: &impl fmt::Debug, expect: Expect) {
 macro_rules! assert_snapshot {
   ($source:literal, $bytecodes:literal, $stack_snapshot:literal) => {
     let scanner = Scanner::new($source);
-    let mut chunk = Chunk::new();
-    let mut parser = Parser::new(scanner, &mut chunk);
+    let mut parser = Parser::new(scanner);
     parser.advance().unwrap();
     parser.program().unwrap();
-    parser.end();
+    let chunk = parser.end();
     check(&chunk, expect![[$bytecodes]]);
     let mut vm = VM::new(chunk);
     let inspector = vm.inspect().unwrap();
@@ -23,11 +22,10 @@ macro_rules! assert_snapshot {
   ($source:literal, $message:literal) => {
     fn get_err() -> Result<(), String> {
       let scanner = Scanner::new($source);
-      let mut chunk = Chunk::new();
-      let mut parser = Parser::new(scanner, &mut chunk);
+      let mut parser = Parser::new(scanner);
       parser.advance()?;
       parser.program()?;
-      parser.end();
+      let chunk = parser.end();
       let mut vm = VM::new(chunk);
       let _ = vm.inspect()?;
       Ok(())

@@ -79,17 +79,17 @@ impl Precedence {
   }
 }
 
-pub struct Rule<'s, 'c> {
+pub struct Rule<'s> {
   pub precedence: Precedence,
-  pub prefix: Option<ParseFn<'s, 'c>>,
-  pub infix: Option<ParseFn<'s, 'c>>,
+  pub prefix: Option<ParseFn<'s>>,
+  pub infix: Option<ParseFn<'s>>,
 }
 
-impl<'s, 'c> Rule<'s, 'c> {
+impl<'s> Rule<'s> {
   pub fn new(
     precedence: Precedence,
-    prefix: Option<ParseFn<'s, 'c>>,
-    infix: Option<ParseFn<'s, 'c>>,
+    prefix: Option<ParseFn<'s>>,
+    infix: Option<ParseFn<'s>>,
   ) -> Self {
     Self {
       precedence,
@@ -100,7 +100,7 @@ impl<'s, 'c> Rule<'s, 'c> {
 }
 
 impl TokenType {
-  pub fn rule<'s, 'c>(&self) -> Rule<'s, 'c> {
+  pub fn rule<'s>(&self) -> Rule<'s> {
     match self {
       Self::LeftParen => {
         Rule::new(Precedence::None, Some(Parser::grouping), None)
