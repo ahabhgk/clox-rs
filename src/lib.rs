@@ -13,3 +13,4 @@ pub use parser::Parser;
 pub use scanner::Scanner;
 pub use vm::VM;
 pub use vm::interpret;
+pub use vm::Inspector;

@@ -3,13 +3,14 @@ use crate::{
   compiler::Compiler,
   scanner::Scanner,
   token::{Precedence, Token, TokenType},
-  value::{Function, Value},
+  value::{Function, FunctionKind, Value},
+  vm::Inspector,
   Chunk,
 };
 
 pub fn compile(source: &str) -> Result<Function, String> {
   let scanner = Scanner::new(source);
-  let mut parser = Parser::new(scanner);
+  let mut parser = Parser::new(scanner, None);
   parser.advance()?; // TODO
   parser.program()?;
   let function = parser.end_compiler();
@@ -20,24 +21,38 @@ pub struct Parser<'source> {
   peek: Option<Token>,
   scanner: Scanner<'source>,
   compiler: Option<Compiler>,
+  inspector: Option<Inspector>,
 }
 
 pub type ParseFn<'s> = fn(&mut Parser<'s>, Token, bool) -> Result<(), String>;
 
 impl<'source> Parser<'source> {
-  pub fn new(scanner: Scanner<'source>) -> Self {
+  pub fn new(scanner: Scanner<'source>, inspector: Option<Inspector>) -> Self {
     Self {
       peek: None,
       scanner,
-      compiler: Some(Compiler::new()),
+      compiler: Some(Compiler::script()),
+      inspector,
     }
   }
 
+  pub fn function_compiler(&mut self, name: &str) {
+    self.compiler = Some(self.compiler.take().unwrap().function(name));
+  }
+
   pub fn end_compiler(&mut self) -> Function {
+    self.emitter().emit_op(Op::Nil);
     self.emitter().emit_op(Op::Return);
     let (compiler, function) = self.compiler.take().unwrap().end();
     self.compiler = compiler;
+    if let Some(ref mut inspector) = self.inspector {
+      inspector.bytecode_snapshot.push(function.clone())
+    }
     function
+  }
+
+  pub fn into_inspector(self) -> Option<Inspector> {
+    self.inspector
   }
 
   fn get_compiler_mut(&mut self) -> &mut Compiler {
@@ -118,6 +133,22 @@ impl<'source> Parser<'source> {
     }
     self.emitter().patch_jump(else_jump)?;
 
+    Ok(())
+  }
+
+  fn return_statement(&mut self) -> Result<(), String> {
+    if let FunctionKind::Script = self.get_compiler_mut().function.kind {
+      return Err("Can't return from top-level code.".to_owned());
+    }
+
+    if self.match_token(TokenType::Semicolon) {
+      self.emitter().emit_op(Op::Nil);
+      self.emitter().emit_op(Op::Return);
+    } else {
+      self.expression()?;
+      self.eat(TokenType::Semicolon, "Expect ';' after return value.")?;
+      self.emitter().emit_op(Op::Return);
+    }
     Ok(())
   }
 
@@ -203,6 +234,8 @@ impl<'source> Parser<'source> {
       self.print_statement()?;
     } else if self.match_token(TokenType::If) {
       self.if_statement()?;
+    } else if self.match_token(TokenType::Return) {
+      self.return_statement()?;
     } else if self.match_token(TokenType::While) {
       self.while_statement()?;
     } else if self.match_token(TokenType::For) {
@@ -226,6 +259,74 @@ impl<'source> Parser<'source> {
     Ok(())
   }
 
+  fn function(&mut self, name: &str) -> Result<(), String> {
+    self.function_compiler(name);
+    self.begin_scope();
+
+    self.eat(TokenType::LeftParen, "Expect '(' after function name.")?;
+    if !self.check(TokenType::RightParen) {
+      loop {
+        self.get_compiler_mut().function.arity = self
+          .get_compiler_mut()
+          .function
+          .arity
+          .checked_add(1)
+          .ok_or("Can't have more than 255 parameters.")?;
+        let token =
+          self.eat(TokenType::Identifier, "Expect parameter name.")?;
+        let name = &token.source;
+        self.parse_local_variable(name)?;
+        self.get_compiler_mut().scopes.mark_init_local(name);
+
+        if !self.match_token(TokenType::Comma) {
+          break;
+        }
+      }
+    }
+    self.eat(TokenType::RightParen, "Expect ')' after parameters.")?;
+    self.eat(TokenType::LeftBrace, "Expect '{' before function body.")?;
+
+    self.block()?;
+
+    let function = self.end_compiler();
+    self.emitter().emit_constant(Value::function(function))?;
+    Ok(())
+  }
+
+  fn fun_declaration(&mut self) -> Result<(), String> {
+    let token = self.eat(TokenType::Identifier, "Expect function name.")?;
+    let name = &token.source;
+
+    let global = if self.get_compiler_mut().scopes.is_empty() {
+      let global = self.emitter().add_constant(Value::string(name))?;
+      Some(global)
+    } else {
+      self.parse_local_variable(name)?;
+      self.get_compiler_mut().scopes.mark_init_local(name);
+      None
+    };
+
+    self.function(name)?;
+
+    if let Some(global) = global {
+      self.emitter().emit_define_global(global);
+    }
+
+    Ok(())
+  }
+
+  fn parse_local_variable(&mut self, name: &str) -> Result<(), String> {
+    if self.get_compiler_mut().scopes.current_has(name).unwrap() {
+      Err("Already a variable with this name in this scope.".to_owned())
+    } else {
+      self
+        .get_compiler_mut()
+        .scopes
+        .define_uninit_local(name.to_owned())?;
+      Ok(())
+    }
+  }
+
   fn var_declaration(&mut self) -> Result<(), String> {
     let token = self.eat(TokenType::Identifier, "Expect variable name.")?;
     let name = &token.source;
@@ -234,17 +335,8 @@ impl<'source> Parser<'source> {
       let global = self.emitter().add_constant(Value::string(name))?;
       Some(global)
     } else {
-      if self.get_compiler_mut().scopes.current_has(name).unwrap() {
-        return Err(
-          "Already a variable with this name in this scope.".to_owned(),
-        );
-      } else {
-        self
-          .get_compiler_mut()
-          .scopes
-          .define_uninit_local(name.to_owned())?;
-        None
-      }
+      self.parse_local_variable(name)?;
+      None
     };
 
     if self.match_token(TokenType::Equal) {
@@ -265,7 +357,9 @@ impl<'source> Parser<'source> {
   }
 
   fn declaration(&mut self) -> Result<(), String> {
-    if self.match_token(TokenType::Var) {
+    if self.match_token(TokenType::Fun) {
+      self.fun_declaration()
+    } else if self.match_token(TokenType::Var) {
       self.var_declaration()
     } else {
       self.statement()
@@ -448,6 +542,29 @@ impl<'source> Parser<'source> {
     self.emitter().emit_op(Op::Pop);
     self.parse_precedence(Precedence::Or)?;
     self.emitter().patch_jump(end_jump)?;
+    Ok(())
+  }
+
+  pub fn call(
+    &mut self,
+    _token: Token,
+    _can_assign: bool,
+  ) -> Result<(), String> {
+    let mut arg_count: u8 = 0;
+    if !self.check(TokenType::RightParen) {
+      loop {
+        self.expression()?;
+        arg_count = arg_count
+          .checked_add(1)
+          .ok_or("Can't have more than 255 arguments.")?;
+
+        if !self.match_token(TokenType::Comma) {
+          break;
+        }
+      }
+    }
+    self.eat(TokenType::RightParen, "Expect ')' after arguments.")?;
+    self.emitter().emit_call(arg_count);
     Ok(())
   }
 }

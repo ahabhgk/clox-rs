@@ -5,7 +5,7 @@ use crate::Chunk;
 #[derive(Clone)]
 pub enum FunctionKind {
   Function { name: String },
-  Scripe,
+  Script,
 }
 
 #[derive(Clone)]
@@ -16,9 +16,11 @@ pub struct Function {
 }
 
 impl Function {
-  pub fn new_function(name: String) -> Self {
+  pub fn new_function(name: &str) -> Self {
     Self {
-      kind: FunctionKind::Function { name },
+      kind: FunctionKind::Function {
+        name: name.to_owned(),
+      },
       arity: 0,
       chunk: Chunk::new(),
     }
@@ -26,7 +28,7 @@ impl Function {
 
   pub fn new_script() -> Self {
     Self {
-      kind: FunctionKind::Scripe,
+      kind: FunctionKind::Script,
       arity: 0,
       chunk: Chunk::new(),
     }

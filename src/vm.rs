@@ -3,13 +3,13 @@ use std::{collections::HashMap, fmt};
 use crate::{
   chunk::Op,
   parser::compile,
-  value::{Function, Value},
+  value::{Function, FunctionKind, Value},
 };
 
 pub fn interpret(source: &str) -> Result<(), String> {
   let function = compile(source)?;
   let mut vm = VM::from_function(function);
-  vm.inspect()?;
+  vm.run(None)?;
   Ok(())
 }
 
@@ -86,14 +86,38 @@ impl VM {
 
   pub fn from_function(function: Function) -> Self {
     let mut vm = Self::new();
-    vm.stack.push(Value::Function(function.clone()));
-    let frame = CallFrame::new(function, vm.stack.len() as u8);
-    vm.frames.push(frame);
+    let f = Value::Function(function);
+    vm.stack.push(f.clone());
+    vm.call(f, 0).unwrap();
     vm
   }
 
-  pub fn inspect(&mut self) -> Result<Inspector, String> {
-    let frame = self.frames.last_mut().unwrap();
+  fn call(&mut self, callee: Value, arg_count: u8) -> Result<(), String> {
+    match callee {
+      Value::Function(f) => {
+        if arg_count != f.arity {
+          return Err(format!(
+            "Expected {} arguments but got {}.",
+            f.arity, arg_count
+          ));
+        }
+        if self.frames.len() >= u8::MAX.into() {
+          return Err("stack overflow.".to_owned());
+        }
+
+        let frame = CallFrame::new(f, self.stack.len() as u8 - arg_count - 1);
+        self.frames.push(frame);
+        Ok(())
+      }
+      _ => Err("Can only call functions and classes.".to_owned()),
+    }
+  }
+
+  pub fn run(
+    &mut self,
+    mut inspector: Option<Inspector>,
+  ) -> Result<Option<Inspector>, String> {
+    let mut frame = self.frames.pop().unwrap();
     macro_rules! push {
       ($v:expr) => {
         self.stack.push($v)
@@ -106,16 +130,17 @@ impl VM {
     }
     macro_rules! peek {
       ($distance:expr) => {
-        self.stack.get(self.stack.len() - 1 - $distance).unwrap()
+        self
+          .stack
+          .get(self.stack.len() - 1 - $distance as usize)
+          .unwrap()
       };
     }
 
-    let mut inspector = Inspector {
-      stack_snapshot: Vec::new(),
-    };
-
     loop {
-      inspector.stack_snapshot.push(self.stack.clone());
+      if let Some(ref mut inspector) = inspector {
+        inspector.stack_snapshot.push(self.stack.clone())
+      }
 
       let code = frame.read_byte();
       let op = Op::from(code);
@@ -228,7 +253,23 @@ impl VM {
           let offset = frame.read_short();
           frame.step_back(offset);
         }
-        Op::Return => break,
+        Op::Call => {
+          let arg_count = frame.read_byte();
+          let callee = peek!(arg_count).clone();
+          self.frames.push(frame);
+          self.call(callee, arg_count)?;
+          frame = self.frames.pop().unwrap();
+        }
+        Op::Return => {
+          let result = pop!();
+          if self.frames.is_empty() {
+            pop!();
+            break;
+          }
+          unsafe { self.stack.set_len(frame.start() as usize) };
+          push!(result);
+          frame = self.frames.pop().unwrap();
+        }
       };
     }
     Ok(inspector)
@@ -236,7 +277,38 @@ impl VM {
 }
 
 pub struct Inspector {
-  stack_snapshot: Vec<Vec<Value>>,
+  pub bytecode_snapshot: Vec<Function>,
+  pub stack_snapshot: Vec<Vec<Value>>,
+}
+
+pub struct BytecodeSnapshot(Vec<Function>);
+
+impl fmt::Debug for BytecodeSnapshot {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    for fun in &self.0 {
+      let name = if let FunctionKind::Function { name } = &fun.kind {
+        format!("<function {}>", name)
+      } else {
+        "<script>".to_owned()
+      };
+      let s = fun.chunk.debug_bytecodes(&format!("== {} ==", &name));
+      write!(f, "{}", s)?;
+    }
+    Ok(())
+  }
+}
+
+impl Inspector {
+  pub fn new() -> Self {
+    Self {
+      bytecode_snapshot: Vec::new(),
+      stack_snapshot: Vec::new(),
+    }
+  }
+
+  pub fn debug_bytecode(&self) -> BytecodeSnapshot {
+    BytecodeSnapshot(self.bytecode_snapshot.clone())
+  }
 }
 
 impl fmt::Debug for Inspector {

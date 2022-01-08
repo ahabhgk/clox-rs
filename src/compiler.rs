@@ -7,7 +7,7 @@ pub struct Compiler {
 }
 
 impl Compiler {
-  pub fn new() -> Self {
+  pub fn script() -> Self {
     Self {
       enclosing: None,
       function: Function::new_script(),
@@ -15,10 +15,10 @@ impl Compiler {
     }
   }
 
-  pub fn extend(self) -> Self {
+  pub fn function(self, name: &str) -> Self {
     Self {
       enclosing: Some(Box::new(self)),
-      function: Function::new_function("todo".to_owned()),
+      function: Function::new_function(name),
       scopes: Scopes::new(),
     }
   }

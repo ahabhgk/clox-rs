@@ -103,7 +103,7 @@ impl TokenType {
   pub fn rule<'s>(&self) -> Rule<'s> {
     match self {
       Self::LeftParen => {
-        Rule::new(Precedence::None, Some(Parser::grouping), None)
+        Rule::new(Precedence::Call, Some(Parser::grouping), Some(Parser::call))
       }
       Self::RightParen => Rule::new(Precedence::None, None, None),
       Self::LeftBrace => Rule::new(Precedence::None, None, None),

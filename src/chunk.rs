@@ -1,8 +1,4 @@
-use std::{
-  fmt::{self, Debug},
-  iter::Enumerate,
-  slice::Iter,
-};
+use std::{iter::Enumerate, slice::Iter};
 
 use crate::value::Value;
 
@@ -31,6 +27,7 @@ pub enum Op {
   Jump,
   JumpIfFalse,
   Loop,
+  Call,
   Return,
 }
 
@@ -66,7 +63,8 @@ impl From<u8> for Op {
       20 => Self::Jump,
       21 => Self::JumpIfFalse,
       22 => Self::Loop,
-      23 => Self::Return,
+      23 => Self::Call,
+      24 => Self::Return,
       _ => unreachable!("{:?}", u),
     }
   }
@@ -166,6 +164,11 @@ impl Chunk {
     Ok(())
   }
 
+  pub fn emit_call(&mut self, arg_count: u8) {
+    self.emit_op(Op::Call);
+    self.push(arg_count);
+  }
+
   fn push(&mut self, byte: u8) {
     self.codes.push(byte);
   }
@@ -188,7 +191,7 @@ impl Chunk {
     Ok(index as u8)
   }
 
-  fn debug_bytecodes(&self, prefix: &str) -> String {
+  pub fn debug_bytecodes(&self, prefix: &str) -> String {
     let mut buffer = String::from(format!("{}\n", prefix));
 
     let mut codes = self.codes.iter().enumerate();
@@ -221,6 +224,7 @@ impl Chunk {
         Op::Jump => self.debug_jump(&op, index, true, &mut codes),
         Op::JumpIfFalse => self.debug_jump(&op, index, true, &mut codes),
         Op::Loop => self.debug_jump(&op, index, false, &mut codes),
+        Op::Call => self.debug_index(&op, &mut codes),
         Op::Return => self.debug_simple(&op),
       };
       buffer.push_str(&s);
@@ -265,11 +269,5 @@ impl Chunk {
       from + 3 - offset as usize
     };
     format!("{:16} {:4} -> {}\n", format!("{:?}", op), from, to)
-  }
-}
-
-impl fmt::Debug for Chunk {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "{}", self.debug_bytecodes("== Bytecodes =="))
   }
 }

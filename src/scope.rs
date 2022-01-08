@@ -9,7 +9,7 @@ impl Scopes {
   pub fn new() -> Self {
     Self {
       scopes: Vec::new(),
-      count: 0,
+      count: 1, // CallFrame slot zero
     }
   }
 
