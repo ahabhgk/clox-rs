@@ -137,7 +137,7 @@ impl fmt::Debug for Value {
       Self::String(v) => write!(f, "\"{}\"", v),
       Self::Function(v) => {
         if let FunctionKind::Function { name } = &v.kind {
-          write!(f, "<function {}>", name)
+          write!(f, "<fun {}>", name)
         } else {
           write!(f, "<script>")
         }

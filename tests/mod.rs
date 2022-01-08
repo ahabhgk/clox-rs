@@ -8,7 +8,7 @@ fn check(actual: &impl fmt::Debug, expect: Expect) {
 }
 
 macro_rules! assert_snapshot {
-  ($source:literal, $bytecodes:literal, $stack_snapshot:literal) => {
+  ($source:literal, $bytecode_snapshot:literal, $stack_snapshot:literal) => {
     let scanner = Scanner::new($source);
     let inspector = Inspector::new();
     let mut parser = Parser::new(scanner, Some(inspector));
@@ -18,8 +18,8 @@ macro_rules! assert_snapshot {
     let inspector = parser.into_inspector();
     let mut vm = VM::from_function(f);
     let inspector = vm.run(inspector).unwrap().unwrap();
-    check(&inspector.debug_bytecode(), expect![[$bytecodes]]);
-    check(&inspector, expect![[$stack_snapshot]]);
+    check(&inspector.debug_bytecode(), expect![[$bytecode_snapshot]]);
+    check(&inspector.debug_stack(), expect![[$stack_snapshot]]);
   };
   ($source:literal, $message:literal) => {
     fn get_err() -> Result<(), String> {
@@ -674,7 +674,7 @@ fn chapter_23_for() {
 
 #[test]
 fn chapter_24_call_frames() {
-// fun first() { var a = 1; second(); var b = 2; } fun second() { var c = 3; var d = 4; } first();
+  // fun first() { var a = 1; second(); var b = 2; } fun second() { var c = 3; var d = 4; } first();
   assert_snapshot!(
     r#"
 fun first() {
@@ -691,7 +691,7 @@ fun second() {
 first();
 "#,
     r#"
-== <function first> ==
+== <fun first> ==
 0000 Constant            0 '1'
 0002 GetGlobal           1 '"second"'
 0004 Call                0
@@ -699,15 +699,15 @@ first();
 0007 Constant            2 '2'
 0009 Nil
 0010 Return
-== <function second> ==
+== <fun second> ==
 0000 Constant            0 '3'
 0002 Constant            1 '4'
 0004 Nil
 0005 Return
 == <script> ==
-0000 Constant            1 '<function first>'
+0000 Constant            1 '<fun first>'
 0002 DefineGlobal        0 '"first"'
-0004 Constant            3 '<function second>'
+0004 Constant            3 '<fun second>'
 0006 DefineGlobal        2 '"second"'
 0008 GetGlobal           4 '"first"'
 0010 Call                0
@@ -719,22 +719,22 @@ first();
     r#"
 == VM Stack Snapshot ==
 [<script>]
-[<script>, <function first>]
+[<script>, <fun first>]
 [<script>]
-[<script>, <function second>]
+[<script>, <fun second>]
 [<script>]
-[<script>, <function first>]
-[<script>, <function first>]
-[<script>, <function first>, 1]
-[<script>, <function first>, 1, <function second>]
-[<script>, <function first>, 1, <function second>]
-[<script>, <function first>, 1, <function second>, 3]
-[<script>, <function first>, 1, <function second>, 3, 4]
-[<script>, <function first>, 1, <function second>, 3, 4, nil]
-[<script>, <function first>, 1, nil]
-[<script>, <function first>, 1]
-[<script>, <function first>, 1, 2]
-[<script>, <function first>, 1, 2, nil]
+[<script>, <fun first>]
+[<script>, <fun first>]
+[<script>, <fun first>, 1]
+[<script>, <fun first>, 1, <fun second>]
+[<script>, <fun first>, 1, <fun second>]
+[<script>, <fun first>, 1, <fun second>, 3]
+[<script>, <fun first>, 1, <fun second>, 3, 4]
+[<script>, <fun first>, 1, <fun second>, 3, 4, nil]
+[<script>, <fun first>, 1, nil]
+[<script>, <fun first>, 1]
+[<script>, <fun first>, 1, 2]
+[<script>, <fun first>, 1, 2, nil]
 [<script>, nil]
 [<script>]
 [<script>, nil]
@@ -745,7 +745,7 @@ first();
 
 #[test]
 fn chapter_24_parameters() {
-// fun sum(a, b, c) { return a + b + c; } print 4 + sum(5, 6, 7);
+  // fun sum(a, b, c) { return a + b + c; } print 4 + sum(5, 6, 7);
   assert_snapshot!(
     r#"
 fun sum(a, b, c) {
@@ -755,7 +755,7 @@ fun sum(a, b, c) {
 print 4 + sum(5, 6, 7);
 "#,
     r#"
-== <function sum> ==
+== <fun sum> ==
 0000 GetLocal            1
 0002 GetLocal            2
 0004 Add
@@ -765,7 +765,7 @@ print 4 + sum(5, 6, 7);
 0009 Nil
 0010 Return
 == <script> ==
-0000 Constant            1 '<function sum>'
+0000 Constant            1 '<fun sum>'
 0002 DefineGlobal        0 '"sum"'
 0004 Constant            2 '4'
 0006 GetGlobal           3 '"sum"'
@@ -782,19 +782,19 @@ print 4 + sum(5, 6, 7);
     r#"
 == VM Stack Snapshot ==
 [<script>]
-[<script>, <function sum>]
+[<script>, <fun sum>]
 [<script>]
 [<script>, 4]
-[<script>, 4, <function sum>]
-[<script>, 4, <function sum>, 5]
-[<script>, 4, <function sum>, 5, 6]
-[<script>, 4, <function sum>, 5, 6, 7]
-[<script>, 4, <function sum>, 5, 6, 7]
-[<script>, 4, <function sum>, 5, 6, 7, 5]
-[<script>, 4, <function sum>, 5, 6, 7, 5, 6]
-[<script>, 4, <function sum>, 5, 6, 7, 11]
-[<script>, 4, <function sum>, 5, 6, 7, 11, 7]
-[<script>, 4, <function sum>, 5, 6, 7, 18]
+[<script>, 4, <fun sum>]
+[<script>, 4, <fun sum>, 5]
+[<script>, 4, <fun sum>, 5, 6]
+[<script>, 4, <fun sum>, 5, 6, 7]
+[<script>, 4, <fun sum>, 5, 6, 7]
+[<script>, 4, <fun sum>, 5, 6, 7, 5]
+[<script>, 4, <fun sum>, 5, 6, 7, 5, 6]
+[<script>, 4, <fun sum>, 5, 6, 7, 11]
+[<script>, 4, <fun sum>, 5, 6, 7, 11, 7]
+[<script>, 4, <fun sum>, 5, 6, 7, 18]
 [<script>, 4, 18]
 [<script>, 22]
 [<script>]

@@ -7,10 +7,11 @@ mod value;
 mod vm;
 mod scope;
 mod compiler;
+mod inspector;
 
 pub use chunk::Chunk;
 pub use parser::Parser;
 pub use scanner::Scanner;
 pub use vm::VM;
 pub use vm::interpret;
-pub use vm::Inspector;
+pub use inspector::Inspector;

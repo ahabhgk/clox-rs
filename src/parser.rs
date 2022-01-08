@@ -4,7 +4,7 @@ use crate::{
   scanner::Scanner,
   token::{Precedence, Token, TokenType},
   value::{Function, FunctionKind, Value},
-  vm::Inspector,
+  inspector::Inspector,
   Chunk,
 };
 
@@ -46,7 +46,7 @@ impl<'source> Parser<'source> {
     let (compiler, function) = self.compiler.take().unwrap().end();
     self.compiler = compiler;
     if let Some(ref mut inspector) = self.inspector {
-      inspector.bytecode_snapshot.push(function.clone())
+      inspector.catch_bytecode(function.clone());
     }
     function
   }
