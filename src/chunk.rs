@@ -1,6 +1,9 @@
 use std::{iter::Enumerate, slice::Iter};
 
-use crate::value::Value;
+use crate::{
+  scope::Upvalue,
+  value::{Closure, Function, Value},
+};
 
 #[derive(Debug)]
 pub enum Op {
@@ -14,6 +17,8 @@ pub enum Op {
   GetGlobal,
   DefineGlobal,
   SetGlobal,
+  GetUpvalue,
+  SetUpvalue,
   Equal,
   Greater,
   Less,
@@ -28,6 +33,7 @@ pub enum Op {
   JumpIfFalse,
   Loop,
   Call,
+  Closure,
   Return,
 }
 
@@ -50,21 +56,24 @@ impl From<u8> for Op {
       7 => Self::GetGlobal,
       8 => Self::DefineGlobal,
       9 => Self::SetGlobal,
-      10 => Self::Equal,
-      11 => Self::Greater,
-      12 => Self::Less,
-      13 => Self::Add,
-      14 => Self::Subtract,
-      15 => Self::Multiply,
-      16 => Self::Divide,
-      17 => Self::Not,
-      18 => Self::Negate,
-      19 => Self::Print,
-      20 => Self::Jump,
-      21 => Self::JumpIfFalse,
-      22 => Self::Loop,
-      23 => Self::Call,
-      24 => Self::Return,
+      10 => Self::GetUpvalue,
+      11 => Self::SetUpvalue,
+      12 => Self::Equal,
+      13 => Self::Greater,
+      14 => Self::Less,
+      15 => Self::Add,
+      16 => Self::Subtract,
+      17 => Self::Multiply,
+      18 => Self::Divide,
+      19 => Self::Not,
+      20 => Self::Negate,
+      21 => Self::Print,
+      22 => Self::Jump,
+      23 => Self::JumpIfFalse,
+      24 => Self::Loop,
+      25 => Self::Call,
+      26 => Self::Closure,
+      27 => Self::Return,
       _ => unreachable!("{:?}", u),
     }
   }
@@ -128,6 +137,21 @@ impl Chunk {
     self.push(index);
   }
 
+  pub fn emit_get_upvalue(&mut self, index: u8) {
+    self.emit_op(Op::GetUpvalue);
+    self.push(index);
+  }
+
+  pub fn emit_set_upvalue(&mut self, index: u8) {
+    self.emit_op(Op::SetUpvalue);
+    self.push(index);
+  }
+
+  pub fn emit_upvalue(&mut self, upvalue: Upvalue) {
+    self.push(if upvalue.is_local { 1 } else { 0 });
+    self.push(upvalue.index);
+  }
+
   pub fn emit_jump(&mut self, op: Op) -> Result<u16, String> {
     self.emit_op(op);
     self.push(0xff);
@@ -167,6 +191,13 @@ impl Chunk {
   pub fn emit_call(&mut self, arg_count: u8) {
     self.emit_op(Op::Call);
     self.push(arg_count);
+  }
+
+  pub fn emit_closure(&mut self, closure: Closure) -> Result<(), String> {
+    let index = self.add_constant(Value::closure(closure))?;
+    self.emit_op(Op::Closure);
+    self.push(index);
+    Ok(())
   }
 
   fn push(&mut self, byte: u8) {
@@ -211,6 +242,8 @@ impl Chunk {
         Op::GetGlobal => self.debug_double(&op, &mut codes),
         Op::DefineGlobal => self.debug_double(&op, &mut codes),
         Op::SetGlobal => self.debug_double(&op, &mut codes),
+        Op::GetUpvalue => self.debug_index(&op, &mut codes),
+        Op::SetUpvalue => self.debug_index(&op, &mut codes),
         Op::Equal => self.debug_simple(&op),
         Op::Greater => self.debug_simple(&op),
         Op::Less => self.debug_simple(&op),
@@ -225,6 +258,30 @@ impl Chunk {
         Op::JumpIfFalse => self.debug_jump(&op, index, true, &mut codes),
         Op::Loop => self.debug_jump(&op, index, false, &mut codes),
         Op::Call => self.debug_index(&op, &mut codes),
+        Op::Closure => {
+          let (_, &constant_index) = codes.next().unwrap();
+          let constant = self.constants.get(constant_index as usize).unwrap();
+          let mut s = format!(
+            "{:16} {:4} {:?}\n",
+            format!("{:?}", op),
+            constant_index,
+            constant
+          );
+          let closure = constant.clone().as_closure().unwrap();
+          dbg!(&codes, &closure);
+          for _ in 0..closure.upvalues_len {
+            let (i, &is_local) = codes.next().unwrap();
+            let (_, &upvalue_index) = codes.next().unwrap();
+            s.push_str(&format!(
+              "{:04} {:21} {} {}\n",
+              i,
+              "|",
+              if is_local == 1 { "local" } else { "upvalue" },
+              upvalue_index,
+            ));
+          }
+          s
+        }
         Op::Return => self.debug_simple(&op),
       };
       buffer.push_str(&s);

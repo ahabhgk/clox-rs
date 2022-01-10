@@ -3,27 +3,27 @@ use std::collections::HashMap;
 use crate::{
   chunk::Op,
   parser::compile,
-  value::{Function, Value},
+  value::{Closure, Function, Upvalue, Value},
   Inspector,
 };
 
 pub fn interpret(source: &str) -> Result<(), String> {
-  let function = compile(source)?;
-  let mut vm = VM::from_function(function);
+  let closure = compile(source)?;
+  let mut vm = VM::from_closure(closure);
   vm.run(None)?;
   Ok(())
 }
 
 pub struct CallFrame {
-  function: Function,
+  closure: Closure,
   index: u16,
   start: u8,
 }
 
 impl CallFrame {
-  pub fn new(function: Function, start: u8) -> Self {
+  pub fn new(closure: Closure, start: u8) -> Self {
     Self {
-      function,
+      closure,
       index: 0,
       start,
     }
@@ -42,7 +42,13 @@ impl CallFrame {
   }
 
   pub fn read_byte(&mut self) -> u8 {
-    let byte = self.function.chunk.codes.get(self.index as usize).unwrap();
+    let byte = self
+      .closure
+      .function
+      .chunk
+      .codes
+      .get(self.index as usize)
+      .unwrap();
     self.index += 1;
     *byte
   }
@@ -55,7 +61,14 @@ impl CallFrame {
 
   pub fn read_constant(&mut self) -> Value {
     let i = self.read_byte() as usize;
-    self.function.chunk.constants.get(i).unwrap().clone()
+    self
+      .closure
+      .function
+      .chunk
+      .constants
+      .get(i)
+      .unwrap()
+      .clone()
   }
 
   pub fn get_local(&mut self, stack: &Vec<Value>) -> Value {
@@ -71,9 +84,9 @@ impl CallFrame {
 }
 
 pub struct VM {
-  frames: Vec<CallFrame>,
-  stack: Vec<Value>,
-  globals: HashMap<String, Value>,
+  pub frames: Vec<CallFrame>,
+  pub stack: Vec<Value>,
+  pub globals: HashMap<String, Value>,
 }
 
 impl VM {
@@ -85,12 +98,11 @@ impl VM {
     }
   }
 
-  pub fn from_function(function: Function) -> Self {
+  pub fn from_closure(closure: Closure) -> Self {
     let mut vm = Self::new();
-    let f = Value::Function(function.clone());
-    let frame = CallFrame::new(function, 0);
+    let frame = CallFrame::new(closure.clone(), 0);
     vm.frames.push(frame);
-    vm.stack.push(f);
+    vm.stack.push(Value::closure(closure));
     vm
   }
 
@@ -101,21 +113,8 @@ impl VM {
     frame: CallFrame,
   ) -> Result<CallFrame, String> {
     match callee {
-      Value::Function(f) => {
-        if arg_count != f.arity {
-          return Err(format!(
-            "Expected {} arguments but got {}.",
-            f.arity, arg_count
-          ));
-        }
-        if self.frames.len() >= u8::MAX.into() {
-          return Err("stack overflow.".to_owned());
-        }
-
-        self.frames.push(frame);
-        let f_frame = CallFrame::new(f, self.stack.len() as u8 - arg_count - 1);
-        Ok(f_frame)
-      }
+      Value::Closure(closure) => closure.call(self, arg_count, frame),
+      Value::Function(f) => f.call(self, arg_count, frame),
       _ => Err("Can only call functions and classes.".to_owned()),
     }
   }
@@ -170,7 +169,6 @@ impl VM {
         }
         Op::GetLocal => {
           let value = frame.get_local(&self.stack);
-          dbg!(&value);
           push!(value);
         }
         Op::SetLocal => {
@@ -180,8 +178,11 @@ impl VM {
         Op::GetGlobal => {
           let name = frame.read_constant();
           let name = name.as_string().unwrap();
-          let value =
-            self.globals.get(name).ok_or("Undefined variable.")?.clone();
+          let value = self
+            .globals
+            .get(&name)
+            .ok_or("Undefined variable.")?
+            .clone();
           push!(value);
         }
         Op::DefineGlobal => {
@@ -194,6 +195,23 @@ impl VM {
             .globals
             .insert(name, peek!(0).clone())
             .ok_or("Undefined variable.")?;
+        }
+        Op::GetUpvalue => {
+          let index = frame.read_byte();
+          dbg!(index, &frame.closure, &frame.closure.upvalues);
+          let value = frame.closure.upvalues.get(index as usize).unwrap().get();
+          push!(value);
+        }
+        Op::SetUpvalue => {
+          let index = frame.read_byte();
+          let len = self.stack.len();
+          let p = self.stack.get_mut(len - 1).unwrap();
+          frame
+            .closure
+            .upvalues
+            .get_mut(index as usize)
+            .unwrap()
+            .set(p);
         }
         Op::Equal => {
           let b = pop!();
@@ -270,6 +288,28 @@ impl VM {
           let arg_count = frame.read_byte();
           let callee = peek!(arg_count).clone();
           frame = self.call(callee, arg_count, frame)?;
+        }
+        Op::Closure => {
+          let closure = frame.read_constant();
+          let mut closure = closure.as_closure().unwrap();
+          for _ in 0..closure.upvalues_len {
+            let is_local = if frame.read_byte() == 1 { true } else { false };
+            let index = frame.read_byte();
+            if is_local {
+              let value = self
+                .stack
+                .get_mut((frame.start() + index) as usize)
+                .unwrap();
+              let upvalue = Upvalue::new(value);
+              closure.upvalues.push(upvalue);
+            } else {
+              let upvalue =
+                frame.closure.upvalues.get(index as usize).unwrap().clone();
+              closure.upvalues.push(upvalue);
+            }
+          }
+          dbg!(&closure, &closure.upvalues);
+          push!(Value::closure(closure));
         }
         Op::Return => {
           let result = pop!();

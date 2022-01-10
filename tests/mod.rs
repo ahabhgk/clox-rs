@@ -14,9 +14,9 @@ macro_rules! assert_snapshot {
     let mut parser = Parser::new(scanner, Some(inspector));
     parser.advance().unwrap();
     parser.program().unwrap();
-    let f = parser.end_compiler();
+    let (f, _) = parser.end_compiler();
     let inspector = parser.into_inspector();
-    let mut vm = VM::from_function(f);
+    let mut vm = VM::from_closure(f);
     let inspector = vm.run(inspector).unwrap().unwrap();
     check(&inspector.debug_bytecode(), expect![[$bytecode_snapshot]]);
     check(&inspector.debug_stack(), expect![[$stack_snapshot]]);
@@ -27,8 +27,8 @@ macro_rules! assert_snapshot {
       let mut parser = Parser::new(scanner, None);
       parser.advance()?;
       parser.program()?;
-      let f = parser.end_compiler();
-      let mut vm = VM::from_function(f);
+      let (f, _) = parser.end_compiler();
+      let mut vm = VM::from_closure(f);
       vm.run(None)?;
       Ok(())
     }
@@ -705,9 +705,9 @@ first();
 0004 Nil
 0005 Return
 == <script> ==
-0000 Constant            1 '<fun first>'
+0000 Closure             1 '<fun first>'
 0002 DefineGlobal        0 '"first"'
-0004 Constant            3 '<fun second>'
+0004 Closure             3 '<fun second>'
 0006 DefineGlobal        2 '"second"'
 0008 GetGlobal           4 '"first"'
 0010 Call                0
@@ -765,7 +765,7 @@ print 4 + sum(5, 6, 7);
 0009 Nil
 0010 Return
 == <script> ==
-0000 Constant            1 '<fun sum>'
+0000 Closure             1 '<fun sum>'
 0002 DefineGlobal        0 '"sum"'
 0004 Constant            2 '4'
 0006 GetGlobal           3 '"sum"'
@@ -803,3 +803,134 @@ print 4 + sum(5, 6, 7);
 "#
   );
 }
+
+#[test]
+fn chapter_25_debug_op_closure() {
+  // fun outer() { var a = 1; var b = 2; fun middle() { var c = 3; var d = 4; fun inner() { print a + c + b + d; } } }
+  assert_snapshot!(
+    r#"
+fun outer() {
+  var a = 1;
+  var b = 2;
+  fun middle() {
+    var c = 3;
+    var d = 4;
+    fun inner() {
+      print a + c + b + d;
+    }
+  }
+}
+"#,
+    r#"
+== <fun inner> ==
+0000 GetUpvalue          0
+0002 GetUpvalue          1
+0004 Add
+0005 GetUpvalue          2
+0007 Add
+0008 GetUpvalue          3
+0010 Add
+0011 Print
+0012 Nil
+0013 Return
+== <fun middle> ==
+0000 Constant            0 '3'
+0002 Constant            1 '4'
+0004 Closure             2 <fun inner>
+0006 |                     upvalue 0
+0008 |                     local 1
+0010 |                     upvalue 1
+0012 |                     local 2
+0014 Nil
+0015 Return
+== <fun outer> ==
+0000 Constant            0 '1'
+0002 Constant            1 '2'
+0004 Closure             2 <fun middle>
+0006 |                     local 1
+0008 |                     local 2
+0010 Nil
+0011 Return
+== <script> ==
+0000 Closure             1 <fun outer>
+0002 DefineGlobal        0 '"outer"'
+0004 Nil
+0005 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[<script>]
+[<script>, <fun outer>]
+[<script>]
+[<script>, nil]
+
+"#
+  );
+}
+
+#[test]
+fn chapter_25_upvalue_object() {
+  //
+  assert_snapshot!(
+    r#"
+fun outer() {
+  var x = "outside";
+  fun inner() {
+    print x;
+  }
+  inner();
+}
+outer();
+"#,
+    r#"
+== <fun inner> ==
+0000 GetUpvalue          0
+0002 Print
+0003 Nil
+0004 Return
+== <fun outer> ==
+0000 Constant            0 '"outside"'
+0002 Closure             1 <fun inner>
+0004 |                     local 1
+0006 GetLocal            2
+0008 Call                0
+0010 Pop
+0011 Nil
+0012 Return
+== <script> ==
+0000 Closure             1 <fun outer>
+0002 DefineGlobal        0 '"outer"'
+0004 GetGlobal           2 '"outer"'
+0006 Call                0
+0008 Pop
+0009 Nil
+0010 Return
+
+"#,
+    r#"
+== VM Stack Snapshot ==
+[<script>]
+[<script>, <fun outer>]
+[<script>]
+[<script>, <fun outer>]
+[<script>, <fun outer>]
+[<script>, <fun outer>, "outside"]
+[<script>, <fun outer>, "outside", <fun inner>]
+[<script>, <fun outer>, "outside", <fun inner>, <fun inner>]
+[<script>, <fun outer>, "outside", <fun inner>, <fun inner>]
+[<script>, <fun outer>, "outside", <fun inner>, <fun inner>, "outer"]
+[<script>, <fun outer>, "outside", <fun inner>, <fun inner>]
+[<script>, <fun outer>, "outside", <fun inner>, <fun inner>, nil]
+[<script>, <fun outer>, "outside", <fun inner>, nil]
+[<script>, <fun outer>, "outside", <fun inner>]
+[<script>, <fun outer>, "outside", <fun inner>, nil]
+[<script>, nil]
+[<script>]
+[<script>, nil]
+
+"#
+  );
+}
+
+

@@ -1,20 +1,21 @@
 use crate::{
   chunk::Op,
   compiler::Compiler,
-  scanner::Scanner,
-  token::{Precedence, Token, TokenType},
-  value::{Function, FunctionKind, Value},
   inspector::Inspector,
+  scanner::Scanner,
+  scope::Upvalue,
+  token::{Precedence, Token, TokenType},
+  value::{Closure, Function, FunctionKind, Value},
   Chunk,
 };
 
-pub fn compile(source: &str) -> Result<Function, String> {
+pub fn compile(source: &str) -> Result<Closure, String> {
   let scanner = Scanner::new(source);
   let mut parser = Parser::new(scanner, None);
   parser.advance()?; // TODO
   parser.program()?;
-  let function = parser.end_compiler();
-  Ok(function)
+  let (closure, _) = parser.end_compiler();
+  Ok(closure)
 }
 
 pub struct Parser<'source> {
@@ -40,15 +41,15 @@ impl<'source> Parser<'source> {
     self.compiler = Some(self.compiler.take().unwrap().function(name));
   }
 
-  pub fn end_compiler(&mut self) -> Function {
+  pub fn end_compiler(&mut self) -> (Closure, Vec<Upvalue>) {
     self.emitter().emit_op(Op::Nil);
     self.emitter().emit_op(Op::Return);
-    let (compiler, function) = self.compiler.take().unwrap().end();
-    self.compiler = compiler;
+    let (enclosing, function, upvalues) = self.compiler.take().unwrap().end();
+    self.compiler = enclosing;
     if let Some(ref mut inspector) = self.inspector {
       inspector.catch_bytecode(function.clone());
     }
-    function
+    (Closure::new(function, upvalues.len() as u8), upvalues)
   }
 
   pub fn into_inspector(self) -> Option<Inspector> {
@@ -288,8 +289,10 @@ impl<'source> Parser<'source> {
 
     self.block()?;
 
-    let function = self.end_compiler();
-    self.emitter().emit_constant(Value::function(function))?;
+    let (function, upvalues) = self.end_compiler();
+    self.emitter().emit_closure(function)?;
+
+    self.get_compiler_mut().emit_upvalues(upvalues);
     Ok(())
   }
 
@@ -405,15 +408,22 @@ impl<'source> Parser<'source> {
     let local = self.get_compiler_mut().scopes.resolve_local(name)?;
     match (is_set, local) {
       (true, None) => {
-        let name = &token.source;
-        let global = self.emitter().add_constant(Value::string(name))?;
-        self.expression()?;
-        self.emitter().emit_set_global(global);
+        if let Some(upvalue) = self.get_compiler_mut().resolve_upvalue(name)? {
+          self.expression()?;
+          self.emitter().emit_set_upvalue(upvalue);
+        } else {
+          let global = self.emitter().add_constant(Value::string(name))?;
+          self.expression()?;
+          self.emitter().emit_set_global(global);
+        }
       }
       (false, None) => {
-        let name = &token.source;
-        let global = self.emitter().add_constant(Value::string(name))?;
-        self.emitter().emit_get_global(global);
+        if let Some(upvalue) = self.get_compiler_mut().resolve_upvalue(name)? {
+          self.emitter().emit_get_upvalue(upvalue);
+        } else {
+          let global = self.emitter().add_constant(Value::string(name))?;
+          self.emitter().emit_get_global(global);
+        }
       }
       (true, Some(local)) => {
         let index = local.index;

@@ -55,9 +55,9 @@ impl Scopes {
     }
   }
 
-  pub fn resolve_local(&self, name: &str) -> Result<Option<&Local>, String> {
-    for scope in self.scopes.iter().rev() {
-      if let Some(local) = scope.get(name) {
+  pub fn resolve_local(&mut self, name: &str) -> Result<Option<&mut Local>, String> {
+    for scope in self.scopes.iter_mut().rev() {
+      if let Some(local) = scope.get_mut(name) {
         if !local.is_init {
           return Err(
             "Can't read local variable in its own initializer.".to_owned(),
@@ -73,6 +73,7 @@ impl Scopes {
 #[derive(Debug, Clone, Copy)]
 pub struct Local {
   pub is_init: bool,
+  pub is_captured: bool,
   pub index: u8,
 }
 
@@ -80,6 +81,7 @@ impl Local {
   pub fn new_uninit(index: u8) -> Self {
     Self {
       is_init: false,
+      is_captured: false,
       index,
     }
   }
@@ -87,6 +89,12 @@ impl Local {
   pub fn mark_init(&mut self) {
     self.is_init = true;
   }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Upvalue {
+  pub is_local: bool,
+  pub index: u8,
 }
 
 pub struct Scope {
